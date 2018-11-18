@@ -10,10 +10,6 @@ void handle(int dev_fd, int sock_fd, struct sockaddr *dst)
     ps.dst_len = sizeof(dst);
     ikcpcb *kcp = init_kcp(&ps, 1);
     ps.kcp = kcp;
-
-    // struct sockaddr_in peer;
-    // ps.src = (sockaddr *)&peer;
-
     std::thread udp2kcpt(udp2kcp, (void *)&ps);
     udp2kcpt.detach();
     std::thread dev2kcpt(dev2kcp, (void *)&ps);
@@ -23,7 +19,7 @@ void handle(int dev_fd, int sock_fd, struct sockaddr *dst)
     while (1)
     {
         update_loop(&ps);
-        isleep(5);
+        isleep(1);
     }
 }
 

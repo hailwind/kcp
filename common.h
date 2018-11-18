@@ -37,8 +37,8 @@
 #define NORMAL_MODE 0, 10, 0, 1
 #define FAST_MODE 1, 10, 2, 1
 
-#define SND_WINDOW 1024
-#define RSV_WINDOW 1024
+#define SND_WINDOW 8192
+#define RSV_WINDOW 8192
 #define STREAM_MODE 1
 #define RX_MINRTO 10
 
@@ -64,9 +64,10 @@ struct kcpsess_st
 	char sndbuff[SND_BUFF_LEN];
 	char rcvbuff[RCV_BUFF_LEN];
     struct sockaddr *dst;
-	struct sockaddr *src;
 	socklen_t dst_len;
-	socklen_t src_len;
+
+	// struct sockaddr *src;
+	// socklen_t src_len;
 };
 
 std::shared_ptr<spdlog::logger> logger(char const *name = "logger");

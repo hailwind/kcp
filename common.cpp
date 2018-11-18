@@ -43,7 +43,6 @@ int init_tap(void)
         logger("init_tap")->info("ioctl(TUNSETIFF) failed");
         exit(3);
     }
-    fcntl(dev, F_SETFL, O_NONBLOCK);
     logger("init_tap")->info("init tap dev success. fd: {}", dev);
     return dev;
 };
@@ -111,7 +110,7 @@ void udp2kcp(void *data)
         if (cnt < 0) {
             continue;
         }
-        logger("udp2kcp")->info("recvfrom udp packet: {}", cnt);
+        //logger("udp2kcp")->info("recvfrom udp packet: {}", cnt);
         ikcp_input(kcps->kcp, kcps->rcvbuff, cnt);
     }
 }
@@ -122,10 +121,10 @@ void dev2kcp(void *data)
     while(true)
     {
         int cnt = read(kcps->dev_fd, (void *)kcps->sndbuff, SND_BUFF_LEN);
+        //logger("dev2kcp")->info("read data from tap: {}", cnt);
         if (cnt < 0) {
             continue;
         }
-        logger("dev2kcp")->info("read data from tap: {}", cnt);
         // if (kcps->mst.blocksize)
         // {
         //     cnt = ((cnt - 1) / dks->mst.blocksize + 1) * dks->mst.blocksize; // pad to block size
@@ -144,7 +143,7 @@ void kcp2dev(void *data)
         while (true) {
 			int cnt = ikcp_recv(kcps->kcp, kcps->rcvbuff, RCV_BUFF_LEN);
 			if (cnt < 0) break;
-            logger("kcp2dev")->info("recv data from kcp: {}", cnt);
+            //logger("kcp2dev")->info("recv data from kcp: {}", cnt);
             write(kcps->dev_fd, (void *)kcps->rcvbuff, cnt);
 		}
         isleep(1);

@@ -41,10 +41,10 @@ void handle(int dev_fd, int sock_fd)
     dev2kcpt.detach();
     std::thread kcp2devt(kcp2dev, (void *)&ps);
     kcp2devt.detach();
-    while (1)
+    while (true)
     {
         update_loop(&ps);
-        isleep(5);
+        isleep(1);
     }
 }
 
