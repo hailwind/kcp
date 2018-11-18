@@ -8,7 +8,7 @@ void handle(int dev_fd, int sock_fd, struct sockaddr *dst)
     ps.conv = 2004898;
     ps.dst = dst;
     ps.dst_len = sizeof(dst);
-    ikcpcb *kcp = init_kcp(&ps, 1);
+    ikcpcb *kcp = init_kcp(&ps, 2);
     ps.kcp = kcp;
     std::thread udp2kcpt(udp2kcp, (void *)&ps);
     udp2kcpt.detach();

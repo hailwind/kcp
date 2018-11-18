@@ -14,7 +14,7 @@ std::shared_ptr<spdlog::logger> logger(char const *name)
 
 int udp_output(const char *buf, int len, ikcpcb *kcp, void *user)
 {
-    logger("udp_output")->info("udp_output {}", len);
+    //logger("udp_output")->info("udp_output {}", len);
     kcpsess_st *ps = (kcpsess_st *)user;
     int cnt = sendto(ps->sock_fd, buf, len, 0, ps->dst, sizeof(*ps->dst));
     if (cnt<0) {

@@ -32,7 +32,7 @@ void handle(int dev_fd, int sock_fd)
     ps.conv = 2004898;
     ps.dst = (struct sockaddr *) &client;
     ps.dst_len = sizeof(ps.dst);
-    ikcpcb *kcp = init_kcp(&ps, 1);
+    ikcpcb *kcp = init_kcp(&ps, 2);
     ps.kcp = kcp;
 
     std::thread udp2kcpt(udp2kcp, (void *)&ps);
