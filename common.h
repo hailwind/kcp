@@ -11,6 +11,7 @@
 #include <unistd.h>
 #include <mcrypt.h>
 #include <netdb.h>
+#include <pthread.h>
 
 #include <sys/time.h>
 #include <sys/wait.h>
@@ -20,11 +21,6 @@
 #include <linux/if.h>
 #include <linux/if_tun.h>
 #include <arpa/inet.h>
-#include <spdlog/spdlog.h>
-
-#include <map>
-#include <list>
-#include <vector>
 
 #include "ikcp.h"
 
@@ -52,6 +48,14 @@ static char default_mode[] = MCRYPT_CBC;
 static char * algo = default_algo;
 static char * mode = default_mode;
 
+struct LOGGER_ST
+{
+	void (*info)(char const *msg, ...);
+	void (*error)(char const *msg, ...);
+};
+
+static struct LOGGER_ST LOGGER;
+
 struct mcrypt_st
 {
     MCRYPT td;
@@ -75,7 +79,7 @@ struct kcpsess_st
 	// socklen_t src_len;
 };
 
-std::shared_ptr<spdlog::logger> logger(char const *name = "logger");
+struct LOGGER_ST* logger(char const *name);
 
 void init_mcrypt(struct mcrypt_st *mcrypt);
 
@@ -83,15 +87,15 @@ int udp_output(const char *buf, int len, ikcpcb *kcp, void *user);
 
 int init_tap(void);
 
-ikcpcb * init_kcp(kcpsess_st *ks, int mode);
+ikcpcb * init_kcp(struct kcpsess_st *ks, int mode);
 
-void udp2kcp(void *data);
+void * udp2kcp(void *data);
 
-void dev2kcp(void *data);
+void * dev2kcp(void *data);
 
-void kcp2dev(void *data);
+void * kcp2dev(void *data);
 
-void update_loop(kcpsess_st *kcps);
+void update_loop(struct kcpsess_st *kcps);
 
 /* get system time */
 static inline void itimeofday(long *sec, long *usec)

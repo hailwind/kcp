@@ -1,17 +1,29 @@
 #include "common.h"
 
-static std::map<std::string, std::shared_ptr<spdlog::logger>> logmap;
+//static std::map<std::string, std::shared_ptr<spdlog::logger>> logmap;
 pthread_mutex_t ikcp_mutex = PTHREAD_MUTEX_INITIALIZER;
 
-std::shared_ptr<spdlog::logger> logger(char const *name)
+// std::shared_ptr<spdlog::logger> logger(char const *name)
+// {
+//     if (logmap.find(name) == logmap.end())
+//     {
+//         logmap[name] = spdlog::stdout_color_mt(name);
+//         spdlog::set_pattern("[%Y-%m-%d %H:%M:%S %z] [thread %t] [%n] %v");
+//         spdlog::set_level(spdlog::level::off);
+//     }
+//     return logmap[name];
+// };
+
+void logging(char const *msg, ...)
 {
-    if (logmap.find(name) == logmap.end())
-    {
-        logmap[name] = spdlog::stdout_color_mt(name);
-        spdlog::set_pattern("[%Y-%m-%d %H:%M:%S %z] [thread %t] [%n] %v");
-        spdlog::set_level(spdlog::level::off);
-    }
-    return logmap[name];
+    //printf(msg, ...);
+}
+
+struct LOGGER_ST *logger(char const *name)
+{
+    LOGGER.info = &logging;
+    LOGGER.error = &logging;
+    return &LOGGER;
 };
 
 int init_tap(void)
@@ -38,7 +50,7 @@ int init_tap(void)
     return dev;
 };
 
-ikcpcb *init_kcp(kcpsess_st *ps, int mode)
+ikcpcb *init_kcp(struct kcpsess_st *ps, int mode)
 {
     ikcpcb *kcp_ = ikcp_create(ps->conv, ps);
     if (mode == 0)
@@ -80,7 +92,7 @@ void init_mcrypt(struct mcrypt_st *mcrypt)
         logger("init_mcrypt")->info("mcrypt_module_open failed algo={} mode={} keysize={}", algo, mode, sizeof(key));
         exit(3);
     }
-    mcrypt->blocksize= mcrypt_enc_get_block_size(mcrypt->td);
+    mcrypt->blocksize = mcrypt_enc_get_block_size(mcrypt->td);
     mcrypt_generic_init(mcrypt->td, key, sizeof(key), NULL);
     mcrypt->enc_state_size = sizeof mcrypt->enc_state;
     mcrypt_enc_get_state(mcrypt->td, mcrypt->enc_state, &mcrypt->enc_state_size);
@@ -89,7 +101,7 @@ void init_mcrypt(struct mcrypt_st *mcrypt)
 int udp_output(const char *buf, int len, ikcpcb *kcp, void *user)
 {
     logger("udp_output")->info("udp_output {}", len);
-    kcpsess_st *ps = (kcpsess_st *)user;
+    struct kcpsess_st *ps = (struct kcpsess_st *)user;
     int cnt = sendto(ps->sock_fd, buf, len, 0, ps->dst, sizeof(*ps->dst));
     if (cnt < 0)
     {
@@ -98,11 +110,11 @@ int udp_output(const char *buf, int len, ikcpcb *kcp, void *user)
     return 0;
 };
 
-void udp2kcp(void *data)
+void *udp2kcp(void *data)
 {
     char buff[RCV_BUFF_LEN];
-    kcpsess_st *kcps = (kcpsess_st *)data;
-    while (true)
+    struct kcpsess_st *kcps = (struct kcpsess_st *)data;
+    while (1)
     {
         int cnt = recvfrom(kcps->sock_fd, &buff, RCV_BUFF_LEN, 0, kcps->dst, &(kcps->dst_len));
         if (cnt < 0)
@@ -116,13 +128,13 @@ void udp2kcp(void *data)
     }
 }
 
-void dev2kcp(void *data)
+void *dev2kcp(void *data)
 {
     char buff[RCV_BUFF_LEN];
-    kcpsess_st *kcps = (kcpsess_st *)data;
-    mcrypt_st mcrypt;
+    struct kcpsess_st *kcps = (struct kcpsess_st *)data;
+    struct mcrypt_st mcrypt;
     init_mcrypt(&mcrypt);
-    while (true)
+    while (1)
     {
         int cnt = read(kcps->dev_fd, (void *)&buff, RCV_BUFF_LEN);
         logger("dev2kcp")->info("read data from tap: {}", cnt);
@@ -142,16 +154,16 @@ void dev2kcp(void *data)
     }
 }
 
-void kcp2dev(void *data)
+void *kcp2dev(void *data)
 {
     char buff[RCV_BUFF_LEN];
-    kcpsess_st *kcps = (kcpsess_st *)data;
-    mcrypt_st mcrypt;
+    struct kcpsess_st *kcps = (struct kcpsess_st *)data;
+    struct mcrypt_st mcrypt;
     init_mcrypt(&mcrypt);
     int x = 0;
-    while (true)
+    while (1)
     {
-        while (true)
+        while (1)
         {
             pthread_mutex_lock(&ikcp_mutex);
             int cnt = ikcp_recv(kcps->kcp, buff, RCV_BUFF_LEN);
@@ -168,10 +180,11 @@ void kcp2dev(void *data)
             }
             x = 0;
             logger("kcp2dev")->info("recv data from kcp: {}", cnt);
-            if (mcrypt.blocksize) {
-                cnt = ((cnt-1)/mcrypt.blocksize+1)*mcrypt.blocksize; // pad to block size
-                mdecrypt_generic (mcrypt.td, buff, cnt);
-                mcrypt_enc_set_state (mcrypt.td, mcrypt.enc_state, mcrypt.enc_state_size);
+            if (mcrypt.blocksize)
+            {
+                cnt = ((cnt - 1) / mcrypt.blocksize + 1) * mcrypt.blocksize; // pad to block size
+                mdecrypt_generic(mcrypt.td, buff, cnt);
+                mcrypt_enc_set_state(mcrypt.td, mcrypt.enc_state, mcrypt.enc_state_size);
             }
             write(kcps->dev_fd, (void *)buff, cnt);
         }
@@ -179,11 +192,11 @@ void kcp2dev(void *data)
     }
 }
 
-void update_loop(kcpsess_st *kcps)
+void update_loop(struct kcpsess_st *kcps)
 {
     if (kcps->kcp)
     {
-        while (true)
+        while (1)
         {
             pthread_mutex_lock(&ikcp_mutex);
             ikcp_update(kcps->kcp, iclock());
