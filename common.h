@@ -32,26 +32,31 @@
 #define SERVER_PORT 8888
 
 //IKCP PARAMETERS DEFINE
+#define DEFAULT_MODE 0, 1, 0, 0
+#define NORMAL_MODE 0, 1, 0, 1
+#define FAST_MODE 1, 1, 2, 1
 
-#define DEFAULT_MODE 0, 10, 0, 0
-#define NORMAL_MODE 0, 10, 0, 1
-#define FAST_MODE 1, 10, 2, 1
-
-#define SND_WINDOW 8192
-#define RSV_WINDOW 8192
-#define STREAM_MODE 1
+#define SND_WINDOW 16384
+#define RSV_WINDOW 16384
 #define RX_MINRTO 10
 
-#define MTU 1450
+#define MTU 1400
 
 #define SND_BUFF_LEN 1518
 #define RCV_BUFF_LEN 16384
+
+#define KEY "0123456789012345678901234567890"
+
+static char default_algo[] = MCRYPT_TWOFISH;
+static char default_mode[] = MCRYPT_CBC;
+static char * algo = default_algo;
+static char * mode = default_mode;
 
 struct mcrypt_st
 {
     MCRYPT td;
     int blocksize;
-    char *enc_state;
+    char enc_state[1024];;
     int enc_state_size;
 };
 
@@ -61,8 +66,8 @@ struct kcpsess_st
     int dev_fd;
 	int sock_fd;
     int conv;
-	char sndbuff[SND_BUFF_LEN];
-	char rcvbuff[RCV_BUFF_LEN];
+	// char sndbuff[SND_BUFF_LEN];
+	// char rcvbuff[RCV_BUFF_LEN];
     struct sockaddr *dst;
 	socklen_t dst_len;
 
@@ -73,6 +78,8 @@ struct kcpsess_st
 std::shared_ptr<spdlog::logger> logger(char const *name = "logger");
 
 void init_mcrypt(struct mcrypt_st *mcrypt);
+
+int udp_output(const char *buf, int len, ikcpcb *kcp, void *user);
 
 int init_tap(void);
 

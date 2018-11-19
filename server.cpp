@@ -9,6 +9,7 @@ static int listening()
         logger("server")->info("create socket fail!");
         exit(EXIT_FAILURE);
     }
+
     bzero(&server, sizeof(server));
     server.sin_family = AF_INET;
     server.sin_addr.s_addr = htonl(INADDR_ANY);
@@ -25,7 +26,6 @@ static int listening()
 void handle(int dev_fd, int sock_fd)
 {
     struct sockaddr_in client;
-
     kcpsess_st ps;
     ps.sock_fd = sock_fd;
     ps.dev_fd = dev_fd;
@@ -34,31 +34,30 @@ void handle(int dev_fd, int sock_fd)
     ps.dst_len = sizeof(ps.dst);
     ikcpcb *kcp = init_kcp(&ps, 2);
     ps.kcp = kcp;
-
     std::thread udp2kcpt(udp2kcp, (void *)&ps);
     udp2kcpt.detach();
     std::thread dev2kcpt(dev2kcp, (void *)&ps);
     dev2kcpt.detach();
     std::thread kcp2devt(kcp2dev, (void *)&ps);
     kcp2devt.detach();
-    while (true)
-    {
-        update_loop(&ps);
-        isleep(1);
-    }
+    update_loop(&ps);
 }
 
 int main(int argc, char *argv[])
 {
+    if (argc!=1 && argc!=3) {
+        printf("server [twofish] [cbc]\n");
+        exit(0);
+    }
+    if (argc==3) {
+        algo = argv[1];
+        mode = argv[2];
+    }
     int sock_fd = listening();
     int dev_fd = init_tap();
-
     handle(dev_fd, sock_fd);
-
     logger("server")->info("close");
     close(sock_fd);
     close(dev_fd);
-
     return 0;
-
 }

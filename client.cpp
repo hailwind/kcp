@@ -16,18 +16,19 @@ void handle(int dev_fd, int sock_fd, struct sockaddr *dst)
     dev2kcpt.detach();
     std::thread kcp2devt(kcp2dev, (void *)&ps);
     kcp2devt.detach();
-    while (1)
-    {
-        update_loop(&ps);
-        isleep(1);
-    }
+    update_loop(&ps);
 }
 
-/*
-		client: socket-->sendto-->revcfrom-->close
-*/
 int main(int argc, char *argv[])
 {
+    if (argc<2) {
+        printf("client 192.168.1.1 [twofish] [cbc]\n");
+        exit(0);
+    }
+    if (argc==4) {
+        algo = argv[2];
+        mode = argv[3];
+    }
     int dev_fd = init_tap();
     int sock_fd = socket(AF_INET, SOCK_DGRAM, 0);
     if (sock_fd < 0)
@@ -35,13 +36,11 @@ int main(int argc, char *argv[])
         logger("client")->info("create socket fail!");
 		exit(EXIT_FAILURE);
     }
-
     struct sockaddr_in ser_addr;
     memset(&ser_addr, 0, sizeof(ser_addr));
     ser_addr.sin_family = AF_INET;
-    ser_addr.sin_addr.s_addr = inet_addr(SERVER_IP);
+    ser_addr.sin_addr.s_addr = inet_addr(argv[1]);
     ser_addr.sin_port = htons(SERVER_PORT);
-
     handle(dev_fd, sock_fd, (sockaddr *)&ser_addr);
     logger("client")->info("close");
     close(sock_fd);
