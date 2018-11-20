@@ -43,18 +43,7 @@
 
 #define KEY "0123456789012345678901234567890"
 
-static char default_algo[] = MCRYPT_TWOFISH;
-static char default_mode[] = MCRYPT_CBC;
-static char * algo = default_algo;
-static char * mode = default_mode;
-
-struct LOGGER_ST
-{
-	void (*info)(char const *msg, ...);
-	void (*error)(char const *msg, ...);
-};
-
-static struct LOGGER_ST LOGGER;
+#define __NR_gettid 186
 
 struct mcrypt_st
 {
@@ -67,19 +56,23 @@ struct mcrypt_st
 struct kcpsess_st
 {
 	ikcpcb *kcp;
+	uint32_t sess_id;
     int dev_fd;
 	int sock_fd;
     int conv;
-	// char sndbuff[SND_BUFF_LEN];
-	// char rcvbuff[RCV_BUFF_LEN];
-    struct sockaddr *dst;
+    struct sockaddr_in *dst;
 	socklen_t dst_len;
-
-	// struct sockaddr *src;
-	// socklen_t src_len;
 };
 
-struct LOGGER_ST* logger(char const *name);
+void logging(char const *name, char const *message, ...);
+
+void set_debug();
+
+void set_server();
+
+void set_mcrypt_algo(char *arg);
+
+void set_mcrypt_mode(char *arg);
 
 void init_mcrypt(struct mcrypt_st *mcrypt);
 
@@ -87,7 +80,7 @@ int udp_output(const char *buf, int len, ikcpcb *kcp, void *user);
 
 int init_tap(void);
 
-ikcpcb * init_kcp(struct kcpsess_st *ks, int mode);
+void init_kcp(struct kcpsess_st *ks, int mode);
 
 void * udp2kcp(void *data);
 

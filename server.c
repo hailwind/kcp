@@ -1,42 +1,44 @@
 #include "common.h"
+#include <getopt.h>
 
-static int listening()
+static int listening(int port)
 {
     struct sockaddr_in server;
     int server_fd = socket(AF_INET, SOCK_DGRAM, 0);
     if (server_fd < 0)
     {
-        logger("server")->info("create socket fail!");
+        logging("listening", "create socket fail!");
         exit(EXIT_FAILURE);
     }
 
     bzero(&server, sizeof(server));
     server.sin_family = AF_INET;
     server.sin_addr.s_addr = htonl(INADDR_ANY);
-    server.sin_port = htons(SERVER_PORT);
+    server.sin_port = htons(port);
     if (bind(server_fd, (struct sockaddr *)&server, sizeof(server)))
     {
-        logger("server")->info("udp bind() failed {}", strerror(errno));
+        logging("listening", "udp bind() failed %s", strerror(errno));
         exit(EXIT_FAILURE);
     }
     else
     {
-        logger("server")->info("udp bind to :{}", SERVER_PORT);
+        logging("listening", "udp bind to :%d", port);
     }
     return server_fd;
 }
 
-void handle(int dev_fd, int sock_fd)
+void handle(int dev_fd, int sock_fd, int conv)
 {
     struct sockaddr_in client;
     struct kcpsess_st ps;
     ps.sock_fd = sock_fd;
     ps.dev_fd = dev_fd;
-    ps.conv = 2004898;
-    ps.dst = (struct sockaddr *)&client;
+    ps.conv = conv;
+    ps.dst = &client;
     ps.dst_len = sizeof(ps.dst);
-    ikcpcb *kcp = init_kcp(&ps, 2);
-    ps.kcp = kcp;
+    ps.kcp=NULL;
+    //init_kcp(&ps, 2);
+
     pthread_t udp2kcpt, dev2kcpt, kcp2devt;
 
     pthread_create(&udp2kcpt, NULL, udp2kcp, (void *)&ps);
@@ -51,22 +53,56 @@ void handle(int dev_fd, int sock_fd)
     update_loop(&ps);
 }
 
+static const struct option long_option[]={
+   {"port",required_argument,NULL,'p'},
+   {"conv",required_argument,NULL,'c'},
+   {"algo",required_argument,NULL,'a'},
+   {"mode",required_argument,NULL,'m'},
+   {"help",no_argument,NULL,'h'},
+   {"debug",no_argument,NULL,'d'},
+   {NULL,0,NULL,0}
+};
+
+void print_help() {
+    printf("server [--port=8888] --conv=28445 [--algo=twofish] [--mode=cbc] [--debug]\n");
+    exit(0);
+}
+
+// server [--algo=twofish] [--mode=cbc]
 int main(int argc, char *argv[])
 {
-    if (argc != 1 && argc != 3)
+    int server_port = SERVER_PORT;
+    int conv=-1;
+    int opt=0;
+    while((opt=getopt_long(argc,argv,"pc:a:m:hd",long_option,NULL))!=-1)
     {
-        printf("server [twofish] [cbc]\n");
-        exit(0);
+        switch(opt)
+        {
+            case 0:break;
+            case 'p': 
+                server_port=atoi(optarg); break;
+            case 'c': 
+                conv=atoi(optarg); break;
+            case 'a': 
+                set_mcrypt_algo(optarg); break;
+            case 'm': 
+                set_mcrypt_mode(optarg); break;
+            case 'd': 
+                set_debug(); break;
+            case 'h': 
+                print_help(); break;
+        }
     }
-    if (argc == 3)
+    if (conv==-1)
     {
-        algo = argv[1];
-        mode = argv[2];
+        print_help();
     }
-    int sock_fd = listening();
+    set_server();
+    srand(time(NULL));
+    int sock_fd = listening(server_port);
     int dev_fd = init_tap();
-    handle(dev_fd, sock_fd);
-    logger("server")->info("close");
+    handle(dev_fd, sock_fd, conv);
+    logging("server", "close");
     close(sock_fd);
     close(dev_fd);
     return 0;

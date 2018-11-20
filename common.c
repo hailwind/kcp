@@ -1,30 +1,44 @@
 #include "common.h"
 
-//static std::map<std::string, std::shared_ptr<spdlog::logger>> logmap;
 pthread_mutex_t ikcp_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t sess_id_mutex = PTHREAD_MUTEX_INITIALIZER;
 
-// std::shared_ptr<spdlog::logger> logger(char const *name)
-// {
-//     if (logmap.find(name) == logmap.end())
-//     {
-//         logmap[name] = spdlog::stdout_color_mt(name);
-//         spdlog::set_pattern("[%Y-%m-%d %H:%M:%S %z] [thread %t] [%n] %v");
-//         spdlog::set_level(spdlog::level::off);
-//     }
-//     return logmap[name];
-// };
+static int DEBUG=0;
+static int role=0;
+static char * algo = MCRYPT_TWOFISH;
+static char * mode = MCRYPT_CBC;
 
-void logging(char const *msg, ...)
+void logging(char const *name, char const *message, ...)
 {
-    //printf(msg, ...);
+    if (DEBUG==1) {
+        time_t now = time(NULL);
+        char timestr[20];
+        strftime(timestr, 20, "%Y-%m-%d %H:%M:%S", localtime(&now));
+        printf("[%s] [%d] [%s] ", timestr, (long int)syscall(__NR_gettid), name);
+        va_list argptr;
+        va_start(argptr, message);
+        vfprintf(stdout, message, argptr);
+        va_end(argptr);
+        printf("\n");
+        fflush(stdout);
+    }
 }
 
-struct LOGGER_ST *logger(char const *name)
-{
-    LOGGER.info = &logging;
-    LOGGER.error = &logging;
-    return &LOGGER;
-};
+void set_debug(){
+    DEBUG=1;
+}
+
+void set_mcrypt_algo(char *arg) {
+    algo = arg;
+}
+
+void set_mcrypt_mode(char *arg) {
+    mode = arg;
+}
+
+void set_server() {
+    role = 1;
+}
 
 int init_tap(void)
 {
@@ -35,7 +49,7 @@ int init_tap(void)
     struct ifreq ifr;
     if ((dev = open(tun_device, O_RDWR)) < 0)
     {
-        logger("init_tap")->info("open({}) failed: {}", tun_device, strerror(errno));
+        logging("init_tap", "open(%s) failed: %s", tun_device, strerror(errno));
         exit(2);
     }
     memset(&ifr, 0, sizeof(ifr));
@@ -43,14 +57,14 @@ int init_tap(void)
     strncpy(ifr.ifr_name, dev_name, IFNAMSIZ);
     if (ioctl(dev, TUNSETIFF, (void *)&ifr) < 0)
     {
-        logger("init_tap")->info("ioctl(TUNSETIFF) failed");
+        logging("init_tap", "ioctl(TUNSETIFF) failed");
         exit(3);
     }
-    logger("init_tap")->info("init tap dev success. fd: {}", dev);
+    logging("init_tap", "init tap dev success. fd: %d", dev);
     return dev;
 };
 
-ikcpcb *init_kcp(struct kcpsess_st *ps, int mode)
+void init_kcp(struct kcpsess_st *ps, int mode)
 {
     ikcpcb *kcp_ = ikcp_create(ps->conv, ps);
     if (mode == 0)
@@ -80,7 +94,11 @@ ikcpcb *init_kcp(struct kcpsess_st *ps, int mode)
 
     kcp_->rx_minrto = RX_MINRTO;
     kcp_->output = udp_output;
-    return kcp_;
+    if (ps->kcp) {
+        ikcp_release(ps->kcp);
+    }
+    ps->kcp = kcp_;
+    ps->sess_id = 0;
 }
 
 void init_mcrypt(struct mcrypt_st *mcrypt)
@@ -89,7 +107,7 @@ void init_mcrypt(struct mcrypt_st *mcrypt)
     mcrypt->td = mcrypt_module_open(algo, NULL, mode, NULL);
     if (mcrypt->td == MCRYPT_FAILED)
     {
-        logger("init_mcrypt")->info("mcrypt_module_open failed algo={} mode={} keysize={}", algo, mode, sizeof(key));
+        logging("init_mcrypt", "mcrypt_module_open failed algo=%s mode=%s keysize=%d", algo, mode, sizeof(key));
         exit(3);
     }
     mcrypt->blocksize = mcrypt_enc_get_block_size(mcrypt->td);
@@ -98,15 +116,37 @@ void init_mcrypt(struct mcrypt_st *mcrypt)
     mcrypt_enc_get_state(mcrypt->td, mcrypt->enc_state, &mcrypt->enc_state_size);
 };
 
+void set_session(void *buf, int len, uint32_t sess_id) {
+    char *x = buf+len;
+    memcpy(x , &sess_id, 4);
+}
+
+uint32_t get_session(void *buf, int len) {
+    char *x = buf+len-4;
+    uint32_t sess_id;
+    memcpy(&sess_id, x, 4);
+    return sess_id;
+}
+
 int udp_output(const char *buf, int len, ikcpcb *kcp, void *user)
 {
-    logger("udp_output")->info("udp_output {}", len);
-    struct kcpsess_st *ps = (struct kcpsess_st *)user;
-    int cnt = sendto(ps->sock_fd, buf, len, 0, ps->dst, sizeof(*ps->dst));
+    logging("udp_output", "length %d", len);
+    struct kcpsess_st *kcps = (struct kcpsess_st *)user;
+    
+    pthread_mutex_lock(&sess_id_mutex);
+    char *x;
+    memcpy(&x, &buf, sizeof(buf));
+    set_session(x, len, kcps->sess_id);
+    len += 4;
+    pthread_mutex_unlock(&sess_id_mutex);
+
+    int cnt = sendto(kcps->sock_fd, buf, len, 0, (struct sockaddr *)kcps->dst, sizeof(*kcps->dst));
     if (cnt < 0)
     {
-        logger("udp_output")->error("udp send failed");
+        logging("udp_output", "addr: %s port: %d", inet_ntoa(kcps->dst->sin_addr), ntohs(kcps->dst->sin_port));
+        logging("udp_output", "udp send failed");
     }
+    logging("udp_output", "kcp.state: %d sess_id: %d", kcp->state, kcps->sess_id);
     return 0;
 };
 
@@ -116,12 +156,35 @@ void *udp2kcp(void *data)
     struct kcpsess_st *kcps = (struct kcpsess_st *)data;
     while (1)
     {
-        int cnt = recvfrom(kcps->sock_fd, &buff, RCV_BUFF_LEN, 0, kcps->dst, &(kcps->dst_len));
+        int cnt = recvfrom(kcps->sock_fd, &buff, RCV_BUFF_LEN, 0, (struct sockaddr *)kcps->dst, &(kcps->dst_len));
         if (cnt < 0)
         {
             continue;
         }
-        logger("udp2kcp")->info("recvfrom udp packet: {}", cnt);
+        uint32_t sess_id = get_session(&buff, cnt);
+        cnt-=4;
+        pthread_mutex_lock(&sess_id_mutex);
+        if (role==1) {//server
+            if (!kcps->kcp || sess_id==0)
+            {
+                logging("udp2kcp", "server reinit_kcp===========");
+                init_kcp((struct kcpsess_st *)data, 2);
+                sess_id = 30000 + rand() % 10000;
+                kcps->sess_id = sess_id;
+            }
+        }else{
+            if (kcps->sess_id==0) {
+                kcps->sess_id = sess_id;
+            }
+            if (kcps->sess_id!=sess_id) {
+                logging("udp2kcp", "client reinit_kcp===========");
+                kcps->sess_id = sess_id;
+                init_kcp((struct kcpsess_st *)data, 2);
+            }
+        }
+        pthread_mutex_unlock(&sess_id_mutex);
+
+        logging("udp2kcp", "recvfrom udp packet: %d addr: %s sess_id: %d", cnt, inet_ntoa(kcps->dst->sin_addr), kcps->sess_id);
         pthread_mutex_lock(&ikcp_mutex);
         ikcp_input(kcps->kcp, buff, cnt);
         pthread_mutex_unlock(&ikcp_mutex);
@@ -137,7 +200,14 @@ void *dev2kcp(void *data)
     while (1)
     {
         int cnt = read(kcps->dev_fd, (void *)&buff, RCV_BUFF_LEN);
-        logger("dev2kcp")->info("read data from tap: {}", cnt);
+        if (!kcps->kcp) {
+            if (role==1) {//server
+                continue;
+            }else{
+                init_kcp((struct kcpsess_st *)data, 2);
+            }
+        }
+        logging("dev2kcp", "read data from tap: %d", cnt);
         if (cnt < 0)
         {
             continue;
@@ -165,6 +235,9 @@ void *kcp2dev(void *data)
     {
         while (1)
         {
+            if (!kcps->kcp) {
+                continue;
+            }
             pthread_mutex_lock(&ikcp_mutex);
             int cnt = ikcp_recv(kcps->kcp, buff, RCV_BUFF_LEN);
             pthread_mutex_unlock(&ikcp_mutex);
@@ -173,13 +246,13 @@ void *kcp2dev(void *data)
                 x++;
                 if (x > 2000)
                 {
-                    logger("kcp2dev")->info("recv no data for 2s.");
+                    logging("kcp2dev", "recv no data for 2s.");
                     x = 0;
                 }
                 break;
             }
             x = 0;
-            logger("kcp2dev")->info("recv data from kcp: {}", cnt);
+            logging("kcp2dev", "recv data from kcp: %d", cnt);
             if (mcrypt.blocksize)
             {
                 cnt = ((cnt - 1) / mcrypt.blocksize + 1) * mcrypt.blocksize; // pad to block size
@@ -194,14 +267,14 @@ void *kcp2dev(void *data)
 
 void update_loop(struct kcpsess_st *kcps)
 {
-    if (kcps->kcp)
+    while (1)
     {
-        while (1)
-        {
+        if (kcps->kcp) {
             pthread_mutex_lock(&ikcp_mutex);
             ikcp_update(kcps->kcp, iclock());
             pthread_mutex_unlock(&ikcp_mutex);
-            isleep(1);
         }
+        isleep(1);
     }
+
 }
