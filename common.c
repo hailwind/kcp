@@ -167,7 +167,7 @@ void *udp2kcp(void *data)
         if (role==1) {//server
             if (!kcps->kcp || sess_id==0)
             {
-                logging("udp2kcp", "server reinit_kcp===========");
+                logging("udp2kcp", "server reinit_kcp=========== sess_id: %d", sess_id);
                 init_kcp((struct kcpsess_st *)data, 2);
                 sess_id = 30000 + rand() % 10000;
                 kcps->sess_id = sess_id;
@@ -177,9 +177,9 @@ void *udp2kcp(void *data)
                 kcps->sess_id = sess_id;
             }
             if (kcps->sess_id!=sess_id) {
-                logging("udp2kcp", "client reinit_kcp===========");
-                kcps->sess_id = sess_id;
+                logging("udp2kcp", "client reinit_kcp=========== sess_id: %d", sess_id);
                 init_kcp((struct kcpsess_st *)data, 2);
+                kcps->sess_id = sess_id;
             }
         }
         pthread_mutex_unlock(&sess_id_mutex);
