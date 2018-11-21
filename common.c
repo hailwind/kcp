@@ -88,22 +88,26 @@ void init_kcp(struct kcpsess_st *ps)
     // 第四个参数 resend为快速重传指标，设置为2
     // 第五个参数 为是否禁用常规流控，这里禁止
     switch(mode) {
-        case 1: 
+        case 0:
+            ikcp_nodelay(kcp_, M0_MODE); break;
+        case 1:
             ikcp_nodelay(kcp_, M1_MODE); break;
-        case 2: 
+        case 2:
             ikcp_nodelay(kcp_, M2_MODE); break;
-        case 3: 
+        case 3:
             ikcp_nodelay(kcp_, M3_MODE); break;
-        case 4: 
+        case 4:
             ikcp_nodelay(kcp_, M4_MODE); break;
-        case 5: 
+        case 5:
             ikcp_nodelay(kcp_, M5_MODE); break;
-        case 6: 
+        case 6:
             ikcp_nodelay(kcp_, M6_MODE); break;
-        case 7: 
+        case 7:
             ikcp_nodelay(kcp_, M7_MODE); break;
+        case 8:
+            ikcp_nodelay(kcp_, M8_MODE); break;
         default:
-            ikcp_nodelay(kcp_, M4_MODE); break;
+            ikcp_nodelay(kcp_, M3_MODE); break;
     }
     ikcp_wndsize(kcp_, SND_WINDOW, RSV_WINDOW);
     ikcp_setmtu(kcp_, MTU);
