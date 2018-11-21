@@ -212,21 +212,6 @@ void *udp2kcp(void *data)
     }
 }
 
-// void d2kcp(struct kcpsess_st *kcps, struct mcrypt_st *mcrypt, char *buff, int cnt) {
-//     logging("dev2kcp", "dev2kcp-1 %ld",timstamp());
-//     if (mcrypt->blocksize)
-//     {
-//         //cnt = ((cnt - 1) / mcrypt.blocksize + 1) * mcrypt.blocksize; // pad to block size
-//         mcrypt_generic(mcrypt->td, (void *)&buff, cnt);
-//         mcrypt_enc_set_state(mcrypt->td, mcrypt->enc_state, mcrypt->enc_state_size);
-//         logging("dev2kcp", "encrypt data: %d", cnt);
-//     }
-//     pthread_mutex_lock(&ikcp_mutex);
-//     ikcp_send(kcps->kcp, buff, cnt);
-//     pthread_mutex_unlock(&ikcp_mutex);
-//     logging("dev2kcp", "dev2kcp-2 %ld",timstamp());
-// }
-
 void *dev2kcp(void *data)
 {
     char buff[RCV_BUFF_LEN];
@@ -234,8 +219,8 @@ void *dev2kcp(void *data)
     struct mcrypt_st mcrypt;
     init_mcrypt(&mcrypt);
     int read_times=0;
-    uint16_t tofrms=0;
-    uint16_t tolen=16;
+    uint16_t total_frms=0;
+    uint16_t total_len=16;
     /*
     0,1 int16 总帧数
     2,3 int16 帧1的长度
@@ -256,31 +241,31 @@ void *dev2kcp(void *data)
                 init_kcp((struct kcpsess_st *)data);
             }
         }
-        int cnt = read(kcps->dev_fd, (void *)buff+tolen, 1514);
+        int cnt = read(kcps->dev_fd, (void *)buff+total_len, 1514);
         if (cnt>0) {
-            logging("dev2kcp", "read data from tap: %d, read_times: %d", cnt, read_times);
-            tofrms++;
-            tolen+=cnt;
-            memcpy(&buff+tofrms*2, &cnt, 2);
+            logging("dev2kcp", "read data from tap, position: %d, size: %d, read_times: %d", total_len, cnt, read_times);
+            total_frms++;
+            total_len+=cnt;
+            memcpy((void *)&buff+total_frms*2, &cnt, 2);
+            uint16_t z;
+            memcpy(&z, &buff+total_frms*2, 2);
         }
         if (read_times>=5 || (cnt>0 && cnt<(MTU-24))) {
-            memcpy(&buff, &tofrms, 2);
-        
+            memcpy(&buff, &total_frms, 2);
             logging("dev2kcp", "dev2kcp-1 %ld",timstamp());
             if (mcrypt.blocksize)
             {
                 //cnt = ((cnt - 1) / mcrypt.blocksize + 1) * mcrypt.blocksize; // pad to block size
-                mcrypt_generic(mcrypt.td, (void *)&buff, cnt);
+                mcrypt_generic(mcrypt.td, (void *)&buff, total_len);
                 mcrypt_enc_set_state(mcrypt.td, mcrypt.enc_state, mcrypt.enc_state_size);
-                logging("dev2kcp", "encrypt data: %d", cnt);
+                logging("dev2kcp", "encrypt data: %d", total_len);
             }
             pthread_mutex_lock(&ikcp_mutex);
-            ikcp_send(kcps->kcp, buff, cnt);
+            ikcp_send(kcps->kcp, buff, total_len);
             pthread_mutex_unlock(&ikcp_mutex);
             logging("dev2kcp", "dev2kcp-2 %ld",timstamp());
-
-            tofrms=0;
-            tolen=16;
+            total_frms=0;
+            total_len=16;
             read_times=0;
             continue;
         }
@@ -304,8 +289,8 @@ void *kcp2dev(void *data)
     struct mcrypt_st mcrypt;
     init_mcrypt(&mcrypt);
     int x = 0;
-    uint16_t tofrms=0;
-    uint16_t tolen=16;
+    uint16_t total_frms=0;
+    uint16_t total_len=16;
     while (1)
     {
         if (!kcps->kcp) {
@@ -335,15 +320,15 @@ void *kcp2dev(void *data)
             mdecrypt_generic(mcrypt.td, buff, cnt);
             mcrypt_enc_set_state(mcrypt.td, mcrypt.enc_state, mcrypt.enc_state_size);
         }
-        memcpy(&tofrms, buff, 2);
+        memcpy(&total_frms, &buff, 2);
         uint16_t frm_size;
-        for (int i=0;i<tofrms;i++) {
-            memcpy(&frm_size, buff+(i+1)*2, 2);
-            int y = write(kcps->dev_fd, (void *)buff+tolen, frm_size);
-            logging("kcp2dev", "write to dev: idx: %d, position: %d, wrote: %d", i, tolen, y);
-            tolen+=frm_size;
+        for (int i=0;i<total_frms;i++) {
+            memcpy(&frm_size, (void *)&buff+(i+1)*2, 2);
+            int y = write(kcps->dev_fd, (void *)buff+total_len, frm_size);
+            logging("kcp2dev", "write to dev: idx: %d, position: %d, size: %d, wrote: %d", i, total_len, frm_size, y);
+            total_len+=frm_size;
         }
-        tolen=16;
+        total_len=16;
         logging("kcp2dev", "kcp2dev-2 %ld",timstamp());
     }
 }
