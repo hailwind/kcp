@@ -5,8 +5,10 @@ pthread_mutex_t sess_id_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 static int DEBUG=0;
 static int role=0;
-static char * algo = MCRYPT_TWOFISH;
-static char * mode = MCRYPT_CBC;
+static int crypt=1;
+static char * crypt_algo = MCRYPT_TWOFISH;
+static char * crypt_mode = MCRYPT_CBC;
+static int mode = 4;
 
 void logging(char const *name, char const *message, ...)
 {
@@ -28,12 +30,20 @@ void set_debug(){
     DEBUG=1;
 }
 
+void set_mode(int arq_mode) {
+    mode = arq_mode;
+}
+
+void set_nocrypt() {
+    crypt = 0;
+}
+
 void set_mcrypt_algo(char *arg) {
-    algo = arg;
+    crypt_algo = arg;
 }
 
 void set_mcrypt_mode(char *arg) {
-    mode = arg;
+    crypt_mode = arg;
 }
 
 void set_server() {
@@ -67,28 +77,28 @@ int init_tap(void)
 void init_kcp(struct kcpsess_st *ps, int mode)
 {
     ikcpcb *kcp_ = ikcp_create(ps->conv, ps);
-    if (mode == 0)
-    {
-        // 默认模式
-        ikcp_nodelay(kcp_, DEFAULT_MODE);
+    // 启动快速模式
+    // 第二个参数 nodelay-启用以后若干常规加速将启动
+    // 第三个参数 interval为内部处理时钟，默认设置为 10ms
+    // 第四个参数 resend为快速重传指标，设置为2
+    // 第五个参数 为是否禁用常规流控，这里禁止
+    switch(mode) {
+        case 1: 
+            ikcp_nodelay(kcp_, M1_MODE); break;
+        case 2: 
+            ikcp_nodelay(kcp_, M2_MODE); break;
+        case 3: 
+            ikcp_nodelay(kcp_, M3_MODE); break;
+        case 4: 
+            ikcp_nodelay(kcp_, M4_MODE); break;
+        case 5: 
+            ikcp_nodelay(kcp_, M5_MODE); break;
+        case 6: 
+            ikcp_nodelay(kcp_, M6_MODE); break;
+        default:
+            ikcp_nodelay(kcp_, M4_MODE); break;
     }
-    else if (mode == 1)
-    {
-        // 普通模式，关闭流控等
-        ikcp_nodelay(kcp_, NORMAL_MODE);
-    }
-    else
-    {
-        // 启动快速模式
-        // 第二个参数 nodelay-启用以后若干常规加速将启动
-        // 第三个参数 interval为内部处理时钟，默认设置为 10ms
-        // 第四个参数 resend为快速重传指标，设置为2
-        // 第五个参数 为是否禁用常规流控，这里禁止
-        ikcp_nodelay(kcp_, FAST_MODE);
-        //kcp_->rx_minrto = 10;
-        kcp_->fastresend = 1;
-    }
-
+    kcp_->fastresend = 1;
     ikcp_wndsize(kcp_, SND_WINDOW, RSV_WINDOW);
     ikcp_setmtu(kcp_, MTU);
 
@@ -103,17 +113,19 @@ void init_kcp(struct kcpsess_st *ps, int mode)
 
 void init_mcrypt(struct mcrypt_st *mcrypt)
 {
-    char key[] = KEY;
-    mcrypt->td = mcrypt_module_open(algo, NULL, mode, NULL);
-    if (mcrypt->td == MCRYPT_FAILED)
-    {
-        logging("init_mcrypt", "mcrypt_module_open failed algo=%s mode=%s keysize=%d", algo, mode, sizeof(key));
-        exit(3);
+    if (crypt) {
+        char key[] = KEY;
+        mcrypt->td = mcrypt_module_open(crypt_algo, NULL, crypt_mode, NULL);
+        if (mcrypt->td == MCRYPT_FAILED)
+        {
+            logging("init_mcrypt", "mcrypt_module_open failed algo=%s mode=%s keysize=%d", crypt_algo, crypt_mode, sizeof(key));
+            exit(3);
+        }
+        mcrypt->blocksize = mcrypt_enc_get_block_size(mcrypt->td);
+        mcrypt_generic_init(mcrypt->td, key, sizeof(key), NULL);
+        mcrypt->enc_state_size = sizeof mcrypt->enc_state;
+        mcrypt_enc_get_state(mcrypt->td, mcrypt->enc_state, &mcrypt->enc_state_size);
     }
-    mcrypt->blocksize = mcrypt_enc_get_block_size(mcrypt->td);
-    mcrypt_generic_init(mcrypt->td, key, sizeof(key), NULL);
-    mcrypt->enc_state_size = sizeof mcrypt->enc_state;
-    mcrypt_enc_get_state(mcrypt->td, mcrypt->enc_state, &mcrypt->enc_state_size);
 };
 
 void set_session(void *buf, int len, uint32_t sess_id) {
@@ -130,6 +142,7 @@ uint32_t get_session(void *buf, int len) {
 
 int udp_output(const char *buf, int len, ikcpcb *kcp, void *user)
 {
+    logging("udp_output", "udp_output-1 %ld",timstamp());
     logging("udp_output", "length %d", len);
     struct kcpsess_st *kcps = (struct kcpsess_st *)user;
     
@@ -139,7 +152,6 @@ int udp_output(const char *buf, int len, ikcpcb *kcp, void *user)
     set_session(x, len, kcps->sess_id);
     len += 4;
     pthread_mutex_unlock(&sess_id_mutex);
-
     int cnt = sendto(kcps->sock_fd, buf, len, 0, (struct sockaddr *)kcps->dst, sizeof(*kcps->dst));
     if (cnt < 0)
     {
@@ -147,6 +159,7 @@ int udp_output(const char *buf, int len, ikcpcb *kcp, void *user)
         logging("udp_output", "udp send failed");
     }
     logging("udp_output", "kcp.state: %d sess_id: %d", kcp->state, kcps->sess_id);
+    logging("udp_output", "udp_output-2 %ld",timstamp());
     return 0;
 };
 
@@ -161,6 +174,7 @@ void *udp2kcp(void *data)
         {
             continue;
         }
+        logging("udp2kcp", "udp2kcp-1 %ld",timstamp());
         uint32_t sess_id = get_session(&buff, cnt);
         cnt-=4;
         pthread_mutex_lock(&sess_id_mutex);
@@ -188,6 +202,7 @@ void *udp2kcp(void *data)
         pthread_mutex_lock(&ikcp_mutex);
         ikcp_input(kcps->kcp, buff, cnt);
         pthread_mutex_unlock(&ikcp_mutex);
+        logging("udp2kcp", "udp2kcp-2 %ld",timstamp());
     }
 }
 
@@ -200,6 +215,7 @@ void *dev2kcp(void *data)
     while (1)
     {
         int cnt = read(kcps->dev_fd, (void *)&buff, RCV_BUFF_LEN);
+        logging("dev2kcp", "dev2kcp-1 %ld",timstamp());
         if (!kcps->kcp) {
             if (role==1) {//server
                 continue;
@@ -214,13 +230,15 @@ void *dev2kcp(void *data)
         }
         if (mcrypt.blocksize)
         {
-            cnt = ((cnt - 1) / mcrypt.blocksize + 1) * mcrypt.blocksize; // pad to block size
+            //cnt = ((cnt - 1) / mcrypt.blocksize + 1) * mcrypt.blocksize; // pad to block size
             mcrypt_generic(mcrypt.td, (void *)&buff, cnt);
             mcrypt_enc_set_state(mcrypt.td, mcrypt.enc_state, mcrypt.enc_state_size);
+            logging("dev2kcp", "encrypt data: %d", cnt);
         }
         pthread_mutex_lock(&ikcp_mutex);
         ikcp_send(kcps->kcp, buff, cnt);
         pthread_mutex_unlock(&ikcp_mutex);
+        logging("dev2kcp", "dev2kcp-2 %ld",timstamp());
     }
 }
 
@@ -231,38 +249,41 @@ void *kcp2dev(void *data)
     struct mcrypt_st mcrypt;
     init_mcrypt(&mcrypt);
     int x = 0;
+
     while (1)
     {
-        while (1)
-        {
-            if (!kcps->kcp) {
-                continue;
-            }
-            pthread_mutex_lock(&ikcp_mutex);
-            int cnt = ikcp_recv(kcps->kcp, buff, RCV_BUFF_LEN);
-            pthread_mutex_unlock(&ikcp_mutex);
-            if (cnt < 0)
-            {
-                x++;
-                if (x > 2000)
-                {
-                    logging("kcp2dev", "recv no data for 2s.");
-                    x = 0;
-                }
-                break;
-            }
-            x = 0;
-            logging("kcp2dev", "recv data from kcp: %d", cnt);
-            if (mcrypt.blocksize)
-            {
-                cnt = ((cnt - 1) / mcrypt.blocksize + 1) * mcrypt.blocksize; // pad to block size
-                mdecrypt_generic(mcrypt.td, buff, cnt);
-                mcrypt_enc_set_state(mcrypt.td, mcrypt.enc_state, mcrypt.enc_state_size);
-            }
-            write(kcps->dev_fd, (void *)buff, cnt);
+        if (!kcps->kcp) {
+            isleep(2);
+            continue;
         }
-        isleep(1);
+        pthread_mutex_lock(&ikcp_mutex);
+        int cnt = ikcp_recv(kcps->kcp, buff, RCV_BUFF_LEN);
+        pthread_mutex_unlock(&ikcp_mutex);
+        if (cnt < 0)
+        {
+            x++;
+            if (x > 2000)
+            {
+                logging("kcp2dev", "recv no data for 2s.");
+                x = 0;
+            }
+            isleep(1);
+            continue;
+        }
+        logging("kcp2dev", "kcp2dev-1 %ld",timstamp());
+        x = 0;
+        logging("kcp2dev", "recv data from kcp: %d", cnt);
+        if (mcrypt.blocksize)
+        {
+            //cnt = ((cnt - 1) / mcrypt.blocksize + 1) * mcrypt.blocksize; // pad to block size
+            mdecrypt_generic(mcrypt.td, buff, cnt);
+            mcrypt_enc_set_state(mcrypt.td, mcrypt.enc_state, mcrypt.enc_state_size);
+        }
+        int y = write(kcps->dev_fd, (void *)buff, cnt);
+        logging("kcp2dev", "decrypt data: %d, buf size: %d, wrote: %d", cnt, sizeof(buff), y);
+        logging("kcp2dev", "kcp2dev-2 %ld",timstamp());
     }
+
 }
 
 void update_loop(struct kcpsess_st *kcps)
@@ -270,11 +291,20 @@ void update_loop(struct kcpsess_st *kcps)
     while (1)
     {
         if (kcps->kcp) {
+            uint32_t current = iclock();
+            pthread_mutex_lock(&ikcp_mutex);
+            uint32_t next = ikcp_check(kcps->kcp, current);
+            pthread_mutex_unlock(&ikcp_mutex);
+            uint32_t diff = next-current;
+            if (diff>0) {
+                isleep(diff);
+            }
             pthread_mutex_lock(&ikcp_mutex);
             ikcp_update(kcps->kcp, iclock());
             pthread_mutex_unlock(&ikcp_mutex);
+        }else{
+            isleep(2);
         }
-        isleep(1);
     }
 
 }

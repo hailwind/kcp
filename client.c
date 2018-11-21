@@ -31,15 +31,17 @@ static const struct option long_option[]={
    {"server",required_argument,NULL,'s'},
    {"port",required_argument,NULL,'p'},
    {"conv",required_argument,NULL,'c'},
-   {"algo",required_argument,NULL,'a'},
-   {"mode",required_argument,NULL,'m'},
+   {"no-crypt",no_argument,NULL,'C'},
+   {"crypt-algo",required_argument,NULL,'A'},
+   {"crypt-mode",required_argument,NULL,'M'},
+   {"mode",required_argument,NULL,'m'}, 
    {"debug",no_argument,NULL,'d'},
    {"help",no_argument,NULL,'h'},
    {NULL,0,NULL,0}
 };
 
 void print_help() {
-    printf("client --server=192.168.1.1 [--port=8888] --conv=28445 [--algo=twofish] [--mode=cbc] [--debug]\n");
+    printf("client --server=192.168.1.1 [--port=8888] --conv=28445 [--no-crypt] [--crypt-algo=twofish] [--crypt-mode=cbc] [--mode=4] [--debug]\n");
     exit(0);
 }
 
@@ -50,7 +52,7 @@ int main(int argc, char *argv[])
     int server_port = SERVER_PORT;
     int conv=-1;
     int opt=0;
-    while((opt=getopt_long(argc,argv,"s:pa:m:hd",long_option,NULL))!=-1)
+    while((opt=getopt_long(argc,argv,"s:p:c:h",long_option,NULL))!=-1)
     {
         switch(opt)
         {
@@ -61,10 +63,14 @@ int main(int argc, char *argv[])
                 server_port=atoi(optarg); break;
             case 'c': 
                 conv=atoi(optarg); break;
-            case 'a': 
+            case 'C':
+                set_nocrypt(); break;
+            case 'A': 
                 set_mcrypt_algo(optarg); break;
-            case 'm': 
+            case 'M': 
                 set_mcrypt_mode(optarg); break;
+            case 'm': 
+                set_mode(atoi(optarg)); break;
             case 'd': 
                 set_debug(); break;
             case 'h': 

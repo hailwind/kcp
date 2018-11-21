@@ -28,18 +28,20 @@
 #define SERVER_PORT 8888
 
 //IKCP PARAMETERS DEFINE
-#define DEFAULT_MODE 0, 1, 0, 0
-#define NORMAL_MODE 0, 1, 0, 1
-#define FAST_MODE 1, 1, 2, 1
+#define M1_MODE 0, 40, 2, 1
+#define M2_MODE 0, 30, 2, 1
+#define M3_MODE 1, 20, 2, 1
+#define M4_MODE 1, 10, 2, 1
+#define M5_MODE 1, 5, 2, 1
+#define M6_MODE 1, 1, 2, 1
 
-#define SND_WINDOW 16384
-#define RSV_WINDOW 16384
-#define RX_MINRTO 10
+#define SND_WINDOW 4096
+#define RSV_WINDOW 4096
+#define RX_MINRTO 20
 
 #define MTU 1400
 
-#define SND_BUFF_LEN 1518
-#define RCV_BUFF_LEN 16384
+#define RCV_BUFF_LEN 4096
 
 #define KEY "0123456789012345678901234567890"
 
@@ -70,6 +72,10 @@ void set_debug();
 
 void set_server();
 
+void set_mode(int arq_mode);
+
+void set_nocrypt();
+
 void set_mcrypt_algo(char *arg);
 
 void set_mcrypt_mode(char *arg);
@@ -97,6 +103,13 @@ static inline void itimeofday(long *sec, long *usec)
 	gettimeofday(&time, NULL);
 	if (sec) *sec = time.tv_sec;
 	if (usec) *usec = time.tv_usec;
+}
+
+static int64_t timstamp()
+{    
+	struct timeval tv;    
+	gettimeofday(&tv,NULL);
+	return tv.tv_sec * 1000 + tv.tv_usec / 1000;    
 }
 
 /* get clock in millisecond 64 */
