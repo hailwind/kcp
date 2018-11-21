@@ -74,7 +74,7 @@ int init_tap(void)
     return dev;
 };
 
-void init_kcp(struct kcpsess_st *ps, int mode)
+void init_kcp(struct kcpsess_st *ps)
 {
     ikcpcb *kcp_ = ikcp_create(ps->conv, ps);
     // 启动快速模式
@@ -95,10 +95,11 @@ void init_kcp(struct kcpsess_st *ps, int mode)
             ikcp_nodelay(kcp_, M5_MODE); break;
         case 6: 
             ikcp_nodelay(kcp_, M6_MODE); break;
+        case 7: 
+            ikcp_nodelay(kcp_, M7_MODE); break;
         default:
             ikcp_nodelay(kcp_, M4_MODE); break;
     }
-    kcp_->fastresend = 1;
     ikcp_wndsize(kcp_, SND_WINDOW, RSV_WINDOW);
     ikcp_setmtu(kcp_, MTU);
 
@@ -182,7 +183,7 @@ void *udp2kcp(void *data)
             if (!kcps->kcp || sess_id==0)
             {
                 logging("udp2kcp", "server reinit_kcp=========== sess_id: %d", sess_id);
-                init_kcp((struct kcpsess_st *)data, 2);
+                init_kcp((struct kcpsess_st *)data);
                 sess_id = 30000 + rand() % 10000;
                 kcps->sess_id = sess_id;
             }
@@ -192,7 +193,7 @@ void *udp2kcp(void *data)
             }
             if (kcps->sess_id!=sess_id) {
                 logging("udp2kcp", "client reinit_kcp=========== sess_id: %d", sess_id);
-                init_kcp((struct kcpsess_st *)data, 2);
+                init_kcp((struct kcpsess_st *)data);
                 kcps->sess_id = sess_id;
             }
         }
@@ -220,7 +221,7 @@ void *dev2kcp(void *data)
             if (role==1) {//server
                 continue;
             }else{
-                init_kcp((struct kcpsess_st *)data, 2);
+                init_kcp((struct kcpsess_st *)data);
             }
         }
         logging("dev2kcp", "read data from tap: %d", cnt);

@@ -28,12 +28,14 @@
 #define SERVER_PORT 8888
 
 //IKCP PARAMETERS DEFINE
+//int nodelay, int interval, int resend, int nc
 #define M1_MODE 0, 40, 2, 1
 #define M2_MODE 0, 30, 2, 1
 #define M3_MODE 1, 20, 2, 1
 #define M4_MODE 1, 10, 2, 1
 #define M5_MODE 1, 5, 2, 1
 #define M6_MODE 1, 1, 2, 1
+#define M7_MODE 1, 1, 1, 1
 
 #define SND_WINDOW 4096
 #define RSV_WINDOW 4096
@@ -86,7 +88,7 @@ int udp_output(const char *buf, int len, ikcpcb *kcp, void *user);
 
 int init_tap(void);
 
-void init_kcp(struct kcpsess_st *ks, int mode);
+void init_kcp(struct kcpsess_st *ks);
 
 void * udp2kcp(void *data);
 
