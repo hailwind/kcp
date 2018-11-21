@@ -8,7 +8,7 @@ static int role=0;
 static int crypt=1;
 static char * crypt_algo = MCRYPT_TWOFISH;
 static char * crypt_mode = MCRYPT_CBC;
-static int mode = 4;
+static int mode = 3;
 
 void logging(char const *name, char const *message, ...)
 {

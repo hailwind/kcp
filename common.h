@@ -29,14 +29,14 @@
 
 //IKCP PARAMETERS DEFINE
 //int nodelay, int interval, int resend, int nc
-#define M1_MODE 0, 2, 100, 0
-#define M2_MODE 0, 2, 50, 0
-#define M3_MODE 0, 2, 20, 0
-#define M4_MODE 0, 2, 10, 0
-#define M5_MODE 0, 2, 100, 1
-#define M6_MODE 0, 2, 50, 1
-#define M7_MODE 0, 2, 20, 1
-#define M8_MODE 0, 2, 10, 1
+#define M1_MODE 0, 2, 50, 0
+#define M2_MODE 0, 2, 20, 0
+#define M3_MODE 0, 2, 10, 0
+#define M4_MODE 0, 2, 5, 0
+#define M5_MODE 0, 2, 50, 1
+#define M6_MODE 0, 2, 20, 1
+#define M7_MODE 0, 2, 10, 1
+#define M8_MODE 0, 2, 5, 1
 
 #define SND_WINDOW 4096
 #define RSV_WINDOW 4096

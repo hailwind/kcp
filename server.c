@@ -67,7 +67,7 @@ static const struct option long_option[]={
 };
 
 void print_help() {
-    printf("server [--bind=0.0.0.0] [--port=8888] --conv=28445 [--no-crypt] [--crypt-algo=twofish] [--crypt-mode=cbc] [--mode=4] [--debug]\n");
+    printf("server [--bind=0.0.0.0] [--port=8888] --conv=28445 [--no-crypt] [--crypt-algo=twofish] [--crypt-mode=cbc] [--mode=3] [--debug]\n");
     exit(0);
 }
 
