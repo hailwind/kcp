@@ -70,6 +70,11 @@ int init_tap(void)
         logging("init_tap", "ioctl(TUNSETIFF) failed");
         exit(3);
     }
+    int flags;
+    if (-1 == (flags = fcntl(dev, F_GETFL, 0))) {
+        flags = 0;
+    }
+    fcntl(dev, F_SETFL, flags | O_NONBLOCK);
     logging("init_tap", "init tap dev success. fd: %d", dev);
     return dev;
 };
@@ -207,39 +212,88 @@ void *udp2kcp(void *data)
     }
 }
 
+// void d2kcp(struct kcpsess_st *kcps, struct mcrypt_st *mcrypt, char *buff, int cnt) {
+//     logging("dev2kcp", "dev2kcp-1 %ld",timstamp());
+//     if (mcrypt->blocksize)
+//     {
+//         //cnt = ((cnt - 1) / mcrypt.blocksize + 1) * mcrypt.blocksize; // pad to block size
+//         mcrypt_generic(mcrypt->td, (void *)&buff, cnt);
+//         mcrypt_enc_set_state(mcrypt->td, mcrypt->enc_state, mcrypt->enc_state_size);
+//         logging("dev2kcp", "encrypt data: %d", cnt);
+//     }
+//     pthread_mutex_lock(&ikcp_mutex);
+//     ikcp_send(kcps->kcp, buff, cnt);
+//     pthread_mutex_unlock(&ikcp_mutex);
+//     logging("dev2kcp", "dev2kcp-2 %ld",timstamp());
+// }
+
 void *dev2kcp(void *data)
 {
     char buff[RCV_BUFF_LEN];
     struct kcpsess_st *kcps = (struct kcpsess_st *)data;
     struct mcrypt_st mcrypt;
     init_mcrypt(&mcrypt);
+    int read_times=0;
+    uint16_t tofrms=0;
+    uint16_t tolen=16;
+    /*
+    0,1 int16 总帧数
+    2,3 int16 帧1的长度
+    4,5 int16 帧2的长度
+    6,7 int16 帧3的长度
+    8,9 int16 帧4的长度
+    10,11 int16 帧5的长度
+    12,13 int16 帧6的长度
+    14,15 int16 帧7的长度
+    */
     while (1)
     {
-        int cnt = read(kcps->dev_fd, (void *)&buff, RCV_BUFF_LEN);
-        logging("dev2kcp", "dev2kcp-1 %ld",timstamp());
         if (!kcps->kcp) {
             if (role==1) {//server
+                isleep(1);
                 continue;
             }else{
                 init_kcp((struct kcpsess_st *)data);
             }
         }
-        logging("dev2kcp", "read data from tap: %d", cnt);
-        if (cnt < 0)
-        {
+        int cnt = read(kcps->dev_fd, (void *)buff+tolen, 1514);
+        if (cnt>0) {
+            logging("dev2kcp", "read data from tap: %d, read_times: %d", cnt, read_times);
+            tofrms++;
+            tolen+=cnt;
+            memcpy(&buff+tofrms*2, &cnt, 2);
+        }
+        if (read_times>=5 || (cnt>0 && cnt<(MTU-24))) {
+            memcpy(&buff, &tofrms, 2);
+        
+            logging("dev2kcp", "dev2kcp-1 %ld",timstamp());
+            if (mcrypt.blocksize)
+            {
+                //cnt = ((cnt - 1) / mcrypt.blocksize + 1) * mcrypt.blocksize; // pad to block size
+                mcrypt_generic(mcrypt.td, (void *)&buff, cnt);
+                mcrypt_enc_set_state(mcrypt.td, mcrypt.enc_state, mcrypt.enc_state_size);
+                logging("dev2kcp", "encrypt data: %d", cnt);
+            }
+            pthread_mutex_lock(&ikcp_mutex);
+            ikcp_send(kcps->kcp, buff, cnt);
+            pthread_mutex_unlock(&ikcp_mutex);
+            logging("dev2kcp", "dev2kcp-2 %ld",timstamp());
+
+            tofrms=0;
+            tolen=16;
+            read_times=0;
             continue;
         }
-        if (mcrypt.blocksize)
-        {
-            //cnt = ((cnt - 1) / mcrypt.blocksize + 1) * mcrypt.blocksize; // pad to block size
-            mcrypt_generic(mcrypt.td, (void *)&buff, cnt);
-            mcrypt_enc_set_state(mcrypt.td, mcrypt.enc_state, mcrypt.enc_state_size);
-            logging("dev2kcp", "encrypt data: %d", cnt);
+        if (cnt < 0) {
+            if (read_times==0) {
+                isleep(1);
+                continue;
+            }else{
+                read_times++;
+            }
+        }else{
+            read_times++;
         }
-        pthread_mutex_lock(&ikcp_mutex);
-        ikcp_send(kcps->kcp, buff, cnt);
-        pthread_mutex_unlock(&ikcp_mutex);
-        logging("dev2kcp", "dev2kcp-2 %ld",timstamp());
     }
 }
 
@@ -250,7 +304,8 @@ void *kcp2dev(void *data)
     struct mcrypt_st mcrypt;
     init_mcrypt(&mcrypt);
     int x = 0;
-
+    uint16_t tofrms=0;
+    uint16_t tolen=16;
     while (1)
     {
         if (!kcps->kcp) {
@@ -280,11 +335,17 @@ void *kcp2dev(void *data)
             mdecrypt_generic(mcrypt.td, buff, cnt);
             mcrypt_enc_set_state(mcrypt.td, mcrypt.enc_state, mcrypt.enc_state_size);
         }
-        int y = write(kcps->dev_fd, (void *)buff, cnt);
-        logging("kcp2dev", "decrypt data: %d, buf size: %d, wrote: %d", cnt, sizeof(buff), y);
+        memcpy(&tofrms, buff, 2);
+        uint16_t frm_size;
+        for (int i=0;i<tofrms;i++) {
+            memcpy(&frm_size, buff+(i+1)*2, 2);
+            int y = write(kcps->dev_fd, (void *)buff+tolen, frm_size);
+            logging("kcp2dev", "write to dev: idx: %d, position: %d, wrote: %d", i, tolen, y);
+            tolen+=frm_size;
+        }
+        tolen=16;
         logging("kcp2dev", "kcp2dev-2 %ld",timstamp());
     }
-
 }
 
 void update_loop(struct kcpsess_st *kcps)
