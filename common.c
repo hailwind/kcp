@@ -257,7 +257,7 @@ void *udp2kcp_server(void *data)
             }
         }
         pthread_mutex_unlock(&sess_id_mutex);
-        logging("udp2kcp_server", "recvfrom udp packet: %d addr: %s sess_id: %d, kcps: %p", cnt, inet_ntoa(kcps->dst->sin_addr), kcps->sess_id, kcps);
+        logging("udp2kcp_server", "recvfrom udp packet: %d addr: %s sess_id: %d, kcps: %p, kcp: %p", cnt, inet_ntoa(kcps->dst->sin_addr), kcps->sess_id, kcps, kcps->kcp);
         pthread_mutex_lock(&ikcp_mutex);
         int ret = ikcp_input(kcps->kcp, buff, cnt);
         pthread_mutex_unlock(&ikcp_mutex);
@@ -430,10 +430,10 @@ void * kcpupdate_server(void *data)
     {
         map_t *node;
         for (node = map_first(&conn_m->conv_session_map); node; node=map_next(&(node->node))) {
-            logging("kcpupdate_server", "update conv: %s", node->key);
+            //logging("kcpupdate_server", "update conv: %s", node->key);
             kcps=(struct kcpsess_st *) (node->val);
-            if (kcps->kcp) {
-                logging("kcpupdate_server", "ikcp_update,kcps: %p kcp: %p, buffer: %p",kcps, kcps->kcp, kcps->kcp->buffer);
+            if (kcps && kcps->kcp) {
+                //logging("kcpupdate_server", "ikcp_update,kcps: %p kcp: %p, buffer: %p",kcps, kcps->kcp, kcps->kcp->buffer);
                 pthread_mutex_lock(&ikcp_mutex);
                 ikcp_update(kcps->kcp, iclock());
                 pthread_mutex_unlock(&ikcp_mutex);
