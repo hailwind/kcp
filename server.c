@@ -28,15 +28,13 @@ static int listening(char *bind_addr, int port)
 }
 
 void manage_threads(struct connection_map_st *conn_m) {
-    const char *key;
     struct kcpsess_st *kcps;
     while (1)
     {
-        map_iter_t iter = map_iter(&conn_m->allowed_conv);
-        while ((key = map_next(&conn_m->allowed_conv, &iter))) {
-            void *v = map_get(&conn_m->conv_session_map, key);
-            if (v) {
-                kcps = (struct kcpsess_st *)v;
+        map_t *node;
+        for (node = map_first(&conn_m->conv_session_map); node; node=map_next(&(node->node))) {
+            if (node->val) {
+                kcps = (struct kcpsess_st *)node->val;
                 if (kcps->dev2kcpt==0) {
                     pthread_create(&kcps->dev2kcpt, NULL, dev2kcp, (void *)kcps);
                     pthread_detach(kcps->dev2kcpt);
@@ -56,9 +54,9 @@ void manage_threads(struct connection_map_st *conn_m) {
 void handle(int sock_fd)
 {
     struct connection_map_st conn_map;
-    map_init(&conn_map.allowed_conv);
-    map_set(&conn_map.allowed_conv, DEFAULT_ALLOWED_CONV, 1);
-    map_init(&conn_map.conv_session_map);
+    conn_map.conv_session_map = RB_ROOT;
+    conn_map.allowed_conv = RB_ROOT;
+    map_put(&conn_map.allowed_conv, DEFAULT_ALLOWED_CONV, NULL);
 
     conn_map.sock_fd = sock_fd;
     struct sockaddr_in client;
@@ -95,6 +93,18 @@ void print_help() {
 // server [--algo=twofish] [--mode=cbc]
 int main(int argc, char *argv[])
 {
+    // struct connection_map_st conn_map;
+    // conn_map.conv_session_map = RB_ROOT;
+    // map_put(&conn_map.allowed_conv, DEFAULT_ALLOWED_CONV, NULL);
+    // struct kcpsess_st x;
+    // printf("%p\n", &x);
+    // kcpsess_pt kcps = &x;
+    // printf("%p\n", kcps);
+    // map_put(&conn_map.conv_session_map, "0001", kcps);
+    // map_t *ptr = map_get(&conn_map.conv_session_map, "0001");
+    // printf("%p\n", ptr->val);
+    // exit(0);
+
     init_logging();
     char *bind_addr = "0.0.0.0";
     int server_port = SERVER_PORT;

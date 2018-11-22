@@ -10,7 +10,7 @@ static char * crypt_algo = MCRYPT_TWOFISH;
 static char * crypt_mode = MCRYPT_CBC;
 static int mode = 3;
 
-static map_int_t enabled_log;
+static root_t enabled_log = RB_ROOT;
 
 void logging(char const *name, char const *message, ...)
 {
@@ -29,11 +29,10 @@ void logging(char const *name, char const *message, ...)
 }
 
 void init_logging() {
-    map_init(&enabled_log);
     char arr[20][15] = ENABLED_LOG;
     for (int i=0;i<20;i++) {
         if (arr[i][0]!='\0') {
-            map_set(&enabled_log, arr[i], 1);
+            map_put(&enabled_log, arr[i], NULL);
         }
     }
 }
@@ -189,7 +188,7 @@ struct kcpsess_st * init_kcpsess(struct connection_map_st *conn_map,
     ps->dev2kcpt = 0;
     ps->kcp2devt = 0;
     init_kcp(ps);
-    logging("init_kcpsess","======== %p, %p, %p", ps, ps->kcp, ps->kcp->buffer);
+    logging("init_kcpsess","kcps: %p, kcp: %p, buffer: %p", ps, ps->kcp, ps->kcp->buffer);
     return ps;
 }
 
@@ -248,7 +247,7 @@ void *udp2kcp_server(void *data)
             kcps = init_kcpsess(conn_map, conv, &client, client_len);
             sess_id = 30000 + rand() % 10000;
             kcps->sess_id = sess_id;
-            map_set(&conn_map->conv_session_map, conv_str, (void *)kcps);
+            map_put(&conn_map->conv_session_map, conv_str, kcps);
         }else{
             kcps = (struct kcpsess_st * )session;
             if (sess_id==0) {
@@ -258,7 +257,7 @@ void *udp2kcp_server(void *data)
             }
         }
         pthread_mutex_unlock(&sess_id_mutex);
-        logging("udp2kcp_server", "recvfrom udp packet: %d addr: %s sess_id: %d, kcps: %p, %p, %p", cnt, inet_ntoa(kcps->dst->sin_addr), kcps->sess_id, kcps, kcps->kcp, kcps->kcp->buffer);
+        logging("udp2kcp_server", "recvfrom udp packet: %d addr: %s sess_id: %d, kcps: %p", cnt, inet_ntoa(kcps->dst->sin_addr), kcps->sess_id, kcps);
         pthread_mutex_lock(&ikcp_mutex);
         int ret = ikcp_input(kcps->kcp, buff, cnt);
         pthread_mutex_unlock(&ikcp_mutex);
@@ -429,10 +428,10 @@ void * kcpupdate_server(void *data)
     struct kcpsess_st *kcps;
     while (1)
     {
-        map_iter_t iter = map_iter(&conn_m->conv_session_map);
-        while ((key = map_next(&conn_m->conv_session_map, &iter))) {
-            logging("kcpupdate_server", "update conv: %s", key);
-            kcps=(struct kcpsess_st *)map_get(&conn_m->conv_session_map, key);
+        map_t *node;
+        for (node = map_first(&conn_m->conv_session_map); node; node=map_next(&(node->node))) {
+            logging("kcpupdate_server", "update conv: %s", node->key);
+            kcps=(struct kcpsess_st *) (node->val);
             if (kcps->kcp) {
                 logging("kcpupdate_server", "ikcp_update,kcps: %p kcp: %p, buffer: %p",kcps, kcps->kcp, kcps->kcp->buffer);
                 pthread_mutex_lock(&ikcp_mutex);

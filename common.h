@@ -78,11 +78,13 @@ struct kcpsess_st
 	pthread_t dev2kcpt;
 };
 
+typedef struct kcpsess_st * kcpsess_pt;
+
 struct connection_map_st
 {
 	int sock_fd;
-	map_int_t allowed_conv;		//k: conv, v: 1
-	map_void_t conv_session_map;    //k: conv, v: kcpsess_st
+	root_t allowed_conv;		//k: conv, v: 1
+	root_t conv_session_map;    //k: conv, v: kcpsess_st
 };
 
 void logging(char const *name, char const *message, ...);
