@@ -1,11 +1,11 @@
 CC = gcc
-all: server client rmo
+all: server client
 
-server: ikcp.o common.o server.o
-	$(CC) -g -rdynamic -lmcrypt -lpthread bin/server.o bin/common.o bin/ikcp.o -o bin/server
+server: map.o ikcp.o common.o server.o
+	$(CC) -g -rdynamic -lmcrypt -lpthread bin/server.o bin/common.o bin/ikcp.o bin/map.o -o bin/server
 
-client: ikcp.o common.o client.o
-	$(CC) -g -rdynamic -lmcrypt -lpthread bin/client.o bin/common.o bin/ikcp.o -o bin/client
+client: map.o ikcp.o common.o client.o
+	$(CC) -g -rdynamic -lmcrypt -lpthread bin/client.o bin/common.o bin/ikcp.o bin/map.o -o bin/client
 
 server.o: 
 	$(CC) -g -rdynamic -c server.c -o bin/server.o
@@ -18,6 +18,9 @@ common.o:
 
 ikcp.o:
 	$(CC) -g -rdynamic -c ikcp.c -o bin/ikcp.o
+
+map.o:
+	$(CC) -g -rdynamic -c map.c -o bin/map.o
 
 rmo:
 	rm bin/*.o

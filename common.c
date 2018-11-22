@@ -10,19 +10,31 @@ static char * crypt_algo = MCRYPT_TWOFISH;
 static char * crypt_mode = MCRYPT_CBC;
 static int mode = 3;
 
+static map_int_t enabled_log;
+
 void logging(char const *name, char const *message, ...)
 {
-    if (DEBUG==1) {
-        time_t now = time(NULL);
-        char timestr[20];
-        strftime(timestr, 20, "%Y-%m-%d %H:%M:%S", localtime(&now));
-        printf("[%s] [%d] [%s] ", timestr, (long int)syscall(__NR_gettid), name);
-        va_list argptr;
-        va_start(argptr, message);
-        vfprintf(stdout, message, argptr);
-        va_end(argptr);
-        printf("\n");
-        fflush(stdout);
+    if (DEBUG==1 || map_get(&enabled_log, name)) {
+            time_t now = time(NULL);
+            char timestr[20];
+            strftime(timestr, 20, "%Y-%m-%d %H:%M:%S", localtime(&now));
+            printf("[%s] [%d] [%s] ", timestr, (long int)syscall(__NR_gettid), name);
+            va_list argptr;
+            va_start(argptr, message);
+            vfprintf(stdout, message, argptr);
+            va_end(argptr);
+            printf("\n");
+            fflush(stdout);
+    }
+}
+
+void init_logging() {
+    map_init(&enabled_log);
+    char arr[20][15] = ENABLED_LOG;
+    for (int i=0;i<20;i++) {
+        if (arr[i][0]!='\0') {
+            map_set(&enabled_log, arr[i], 1);
+        }
     }
 }
 
@@ -50,11 +62,48 @@ void set_server() {
     role = 1;
 }
 
-int init_tap(void)
+void set_session(void *buf, int len, uint32_t sess_id) {
+    char *x = buf+len;
+    memcpy(x , &sess_id, 4);
+}
+
+uint32_t get_session(void *buf, int len) {
+    char *x = buf+len-4;
+    uint32_t sess_id;
+    memcpy(&sess_id, x, 4);
+    return sess_id;
+}
+
+uint32_t get_conv(void *buf) {
+    uint32_t conv_id;
+	memcpy(&conv_id, buf, 4);
+    return conv_id;
+}
+
+void init_mcrypt(struct mcrypt_st *mcrypt)
+{
+    if (crypt) {
+        char key[] = KEY;
+        mcrypt->td = mcrypt_module_open(crypt_algo, NULL, crypt_mode, NULL);
+        if (mcrypt->td == MCRYPT_FAILED)
+        {
+            logging("init_mcrypt", "mcrypt_module_open failed algo=%s mode=%s keysize=%d", crypt_algo, crypt_mode, sizeof(key));
+            exit(3);
+        }
+        mcrypt->blocksize = mcrypt_enc_get_block_size(mcrypt->td);
+        mcrypt_generic_init(mcrypt->td, key, sizeof(key), NULL);
+        mcrypt->enc_state_size = sizeof mcrypt->enc_state;
+        mcrypt_enc_get_state(mcrypt->td, mcrypt->enc_state, &mcrypt->enc_state_size);
+    }
+}
+
+int init_tap(uint32_t conv)
 {
     int dev;
     char tun_device[] = "/dev/net/tun";
-    char dev_name[] = "tap%d";
+    char devname[20];
+    sprintf(devname, "tap%d", conv);
+    logging("init_tap", "devname: %s", devname);
     int tuntap_flag = IFF_TAP;
     struct ifreq ifr;
     if ((dev = open(tun_device, O_RDWR)) < 0)
@@ -64,7 +113,7 @@ int init_tap(void)
     }
     memset(&ifr, 0, sizeof(ifr));
     ifr.ifr_flags = tuntap_flag | IFF_NO_PI;
-    strncpy(ifr.ifr_name, dev_name, IFNAMSIZ);
+    strncpy(ifr.ifr_name, devname, IFNAMSIZ);
     if (ioctl(dev, TUNSETIFF, (void *)&ifr) < 0)
     {
         logging("init_tap", "ioctl(TUNSETIFF) failed");
@@ -77,11 +126,12 @@ int init_tap(void)
     fcntl(dev, F_SETFL, flags | O_NONBLOCK);
     logging("init_tap", "init tap dev success. fd: %d", dev);
     return dev;
-};
+}
 
 void init_kcp(struct kcpsess_st *ps)
 {
     ikcpcb *kcp_ = ikcp_create(ps->conv, ps);
+    logging("init_kcp", "ikcp_create, kcps: %p, kcp: %p, buffer: %p", ps, kcp_, kcp_->buffer);
     // 启动快速模式
     // 第二个参数 nodelay-启用以后若干常规加速将启动
     // 第三个参数 interval为内部处理时钟，默认设置为 10ms
@@ -115,39 +165,32 @@ void init_kcp(struct kcpsess_st *ps)
     kcp_->rx_minrto = RX_MINRTO;
     kcp_->output = udp_output;
     if (ps->kcp) {
+        //logging("init_kcp", "release kcp: %p", ps->kcp->buffer);
         ikcp_release(ps->kcp);
     }
-    ps->kcp = kcp_;
+    ps->kcp=kcp_;
     ps->sess_id = 0;
 }
 
-void init_mcrypt(struct mcrypt_st *mcrypt)
+struct kcpsess_st * init_kcpsess(struct connection_map_st *conn_map, 
+                                uint32_t conv, 
+                                struct sockaddr_in *client, 
+                                int client_len)
 {
-    if (crypt) {
-        char key[] = KEY;
-        mcrypt->td = mcrypt_module_open(crypt_algo, NULL, crypt_mode, NULL);
-        if (mcrypt->td == MCRYPT_FAILED)
-        {
-            logging("init_mcrypt", "mcrypt_module_open failed algo=%s mode=%s keysize=%d", crypt_algo, crypt_mode, sizeof(key));
-            exit(3);
-        }
-        mcrypt->blocksize = mcrypt_enc_get_block_size(mcrypt->td);
-        mcrypt_generic_init(mcrypt->td, key, sizeof(key), NULL);
-        mcrypt->enc_state_size = sizeof mcrypt->enc_state;
-        mcrypt_enc_get_state(mcrypt->td, mcrypt->enc_state, &mcrypt->enc_state_size);
-    }
-};
-
-void set_session(void *buf, int len, uint32_t sess_id) {
-    char *x = buf+len;
-    memcpy(x , &sess_id, 4);
-}
-
-uint32_t get_session(void *buf, int len) {
-    char *x = buf+len-4;
-    uint32_t sess_id;
-    memcpy(&sess_id, x, 4);
-    return sess_id;
+    int dev_fd = init_tap(conv);
+    struct kcpsess_st *ps = (struct kcpsess_st *)malloc(sizeof(struct kcpsess_st));
+    ps->sock_fd = conn_map->sock_fd;
+    ps->dev_fd = dev_fd;
+    ps->conv = conv;
+    ps->dst = (struct sockaddr_in *)malloc(client_len);
+    memcpy(ps->dst, client, client_len);
+    ps->dst_len = client_len;
+    ps->sess_id = 0;
+    ps->dev2kcpt = 0;
+    ps->kcp2devt = 0;
+    init_kcp(ps);
+    logging("init_kcpsess","======== %p, %p, %p", ps, ps->kcp, ps->kcp->buffer);
+    return ps;
 }
 
 int udp_output(const char *buf, int len, ikcpcb *kcp, void *user)
@@ -171,9 +214,59 @@ int udp_output(const char *buf, int len, ikcpcb *kcp, void *user)
     logging("udp_output", "kcp.state: %d sess_id: %d", kcp->state, kcps->sess_id);
     logging("udp_output", "udp_output-2 %ld",timstamp());
     return 0;
-};
+}
 
-void *udp2kcp(void *data)
+void *udp2kcp_server(void *data)
+{
+    char buff[RCV_BUFF_LEN];
+    struct connection_map_st *conn_map = (struct connection_map_st *)data;
+    struct sockaddr_in client;
+    socklen_t client_len = sizeof(client);
+    struct kcpsess_st * kcps;
+    while (1)
+    {
+        int cnt = recvfrom(conn_map->sock_fd, &buff, RCV_BUFF_LEN, 0, (struct sockaddr *)&client, &client_len);
+        if (cnt < (24+4))//24(KCP) 4(SESS)
+        {
+            continue;
+        }
+        logging("udp2kcp_server", "udp2kcp-1 %ld",timstamp());
+        uint32_t conv = get_conv(&buff);
+        char conv_str[20];
+        sprintf(conv_str, "%d", conv);
+        logging("udp2kcp_server", "udp2kcp-x %d", conv);
+        if (!map_get(&conn_map->allowed_conv, conv_str)){
+            continue;
+        }
+        uint32_t sess_id = get_session(&buff, cnt);
+        cnt-=4;
+        pthread_mutex_lock(&sess_id_mutex);
+        void *session = map_get(&conn_map->conv_session_map, conv_str);
+        if (!session)
+        {
+            logging("udp2kcp_server", "server init_kcp=========== sess_id: %d", sess_id);
+            kcps = init_kcpsess(conn_map, conv, &client, client_len);
+            sess_id = 30000 + rand() % 10000;
+            kcps->sess_id = sess_id;
+            map_set(&conn_map->conv_session_map, conv_str, (void *)kcps);
+        }else{
+            kcps = (struct kcpsess_st * )session;
+            if (sess_id==0) {
+                init_kcp(kcps);
+                sess_id = 30000 + rand() % 10000;
+                kcps->sess_id = sess_id;
+            }
+        }
+        pthread_mutex_unlock(&sess_id_mutex);
+        logging("udp2kcp_server", "recvfrom udp packet: %d addr: %s sess_id: %d, kcps: %p, %p, %p", cnt, inet_ntoa(kcps->dst->sin_addr), kcps->sess_id, kcps, kcps->kcp, kcps->kcp->buffer);
+        pthread_mutex_lock(&ikcp_mutex);
+        int ret = ikcp_input(kcps->kcp, buff, cnt);
+        pthread_mutex_unlock(&ikcp_mutex);
+        logging("udp2kcp_server", "udp2kcp-2 %ld, result: %d",timstamp(), ret);
+    }
+}
+
+void *udp2kcp_client(void *data)
 {
     char buff[RCV_BUFF_LEN];
     struct kcpsess_st *kcps = (struct kcpsess_st *)data;
@@ -184,35 +277,25 @@ void *udp2kcp(void *data)
         {
             continue;
         }
-        logging("udp2kcp", "udp2kcp-1 %ld",timstamp());
+        logging("udp2kcp_client", "udp2kcp-1 %ld",timstamp());
         uint32_t sess_id = get_session(&buff, cnt);
         cnt-=4;
         pthread_mutex_lock(&sess_id_mutex);
-        if (role==1) {//server
-            if (!kcps->kcp || sess_id==0)
-            {
-                logging("udp2kcp", "server reinit_kcp=========== sess_id: %d", sess_id);
-                init_kcp((struct kcpsess_st *)data);
-                sess_id = 30000 + rand() % 10000;
-                kcps->sess_id = sess_id;
-            }
-        }else{
-            if (kcps->sess_id==0) {
-                kcps->sess_id = sess_id;
-            }
-            if (kcps->sess_id!=sess_id) {
-                logging("udp2kcp", "client reinit_kcp=========== sess_id: %d", sess_id);
-                init_kcp((struct kcpsess_st *)data);
-                kcps->sess_id = sess_id;
-            }
+        if (kcps->sess_id==0) {
+            kcps->sess_id = sess_id;
+        }
+        if (kcps->sess_id!=sess_id) {
+            logging("udp2kcp_client", "client reinit_kcp=========== sess_id: %d", sess_id);
+            init_kcp((struct kcpsess_st *)data);
+            kcps->sess_id = sess_id;
         }
         pthread_mutex_unlock(&sess_id_mutex);
 
-        logging("udp2kcp", "recvfrom udp packet: %d addr: %s sess_id: %d", cnt, inet_ntoa(kcps->dst->sin_addr), kcps->sess_id);
+        logging("udp2kcp_client", "recvfrom udp packet: %d addr: %s sess_id: %d", cnt, inet_ntoa(kcps->dst->sin_addr), kcps->sess_id);
         pthread_mutex_lock(&ikcp_mutex);
         ikcp_input(kcps->kcp, buff, cnt);
         pthread_mutex_unlock(&ikcp_mutex);
-        logging("udp2kcp", "udp2kcp-2 %ld",timstamp());
+        logging("udp2kcp_client", "udp2kcp-2 %ld",timstamp());
     }
 }
 
@@ -301,9 +384,11 @@ void *kcp2dev(void *data)
             isleep(2);
             continue;
         }
+        logging("kcp2dev", "recv-1");
         pthread_mutex_lock(&ikcp_mutex);
         int cnt = ikcp_recv(kcps->kcp, buff, RCV_BUFF_LEN);
         pthread_mutex_unlock(&ikcp_mutex);
+        logging("kcp2dev", "recv-2 %d", cnt);
         if (cnt < 0)
         {
             x++;
@@ -334,6 +419,28 @@ void *kcp2dev(void *data)
         }
         total_len=16;
         logging("kcp2dev", "kcp2dev-2 %ld",timstamp());
+    }
+}
+
+void * kcpupdate_server(void *data)
+{
+    struct connection_map_st *conn_m = (struct connection_map_st *)data;
+    const char *key;
+    struct kcpsess_st *kcps;
+    while (1)
+    {
+        map_iter_t iter = map_iter(&conn_m->conv_session_map);
+        while ((key = map_next(&conn_m->conv_session_map, &iter))) {
+            logging("kcpupdate_server", "update conv: %s", key);
+            kcps=(struct kcpsess_st *)map_get(&conn_m->conv_session_map, key);
+            if (kcps->kcp) {
+                logging("kcpupdate_server", "ikcp_update,kcps: %p kcp: %p, buffer: %p",kcps, kcps->kcp, kcps->kcp->buffer);
+                pthread_mutex_lock(&ikcp_mutex);
+                ikcp_update(kcps->kcp, iclock());
+                pthread_mutex_unlock(&ikcp_mutex);
+            }
+        }
+        isleep(1);
     }
 }
 

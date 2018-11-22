@@ -14,7 +14,7 @@ void handle(int dev_fd, int sock_fd, int conv, struct sockaddr_in *dst)
 
     pthread_t udp2kcpt, dev2kcpt, kcp2devt;
 
-    pthread_create(&udp2kcpt, NULL, udp2kcp, (void *)&ps);
+    pthread_create(&udp2kcpt, NULL, udp2kcp_client, (void *)&ps);
     pthread_detach(udp2kcpt);
 
     pthread_create(&dev2kcpt, NULL, dev2kcp, (void *)&ps);
@@ -48,6 +48,7 @@ void print_help() {
 //client --server 192.168.1.1 [--algo=twofish] [--mode=cbc]
 int main(int argc, char *argv[])
 {
+    init_logging();
     char * server_addr;
     int server_port = SERVER_PORT;
     int conv=-1;
@@ -82,7 +83,7 @@ int main(int argc, char *argv[])
     {
         print_help();
     }
-    int dev_fd = init_tap();
+    int dev_fd = init_tap(conv);
     int sock_fd = socket(AF_INET, SOCK_DGRAM, 0);
     if (sock_fd < 0)
     {
