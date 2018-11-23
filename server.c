@@ -50,7 +50,7 @@ struct kcpsess_st * init_kcpsess(struct connection_map_st *conn_map,
 void send_fifo(char *cmd, char *conv) {
     int fd;  
     char buf[128];
-    sprintf(buf, "%s%s", cmd, conv);
+    sprintf(buf, "%s%s\n", cmd, conv);
     fd=open(FIFO, O_WRONLY);
     if(fd<0)
     {
@@ -75,11 +75,10 @@ void set_conv_dead(struct connection_map_st *conn_map, char *conv) {
         // ret = pthread_cancel(kcps->kcp2devt);
         // printf("cancel kcp2devt ret: %d\n", ret);
         sleep(2);
-        close(kcps->dev_fd);
-        ikcp_release(kcps->kcp);
-        node->val=NULL;
-        free(kcps);
+        if (kcps->dev_fd>0) close(kcps->dev_fd);
+        if (kcps->kcp) ikcp_release(kcps->kcp);
         map_delete(&conn_map->conv_session_map, node);
+        free(kcps);
     }
 }
 
@@ -101,6 +100,12 @@ void read_fifo(struct connection_map_st *conn_map) {
         memset(buf, '\0', 128);
         int count=read(conn_map->fifo_fd, buf, 127);
         if (count>7) {
+            for (int i=3;i<count;i++) {
+                if (buf[i]=='\n' || buf[i]=='\0') {
+                    buf[i]='\0';
+                    break;
+                }
+            }
             logging("read_fifo", "read fifo: %s, %d bytes", buf, count);
             // int conv;
             char *conv = buf+3;
