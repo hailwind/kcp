@@ -1,6 +1,8 @@
 #include <getopt.h>
 #include "common.h"
 
+#define FIFO "/var/run/edge.fifo"
+
 static int listening(char *bind_addr, int port)
 {
     struct sockaddr_in server;
@@ -39,29 +41,102 @@ struct kcpsess_st * init_kcpsess(struct connection_map_st *conn_map,
     ps->sess_id = 0;
     ps->dev2kcpt = 0;
     ps->kcp2devt = 0;
+    pthread_mutex_t ikcp_mutex = PTHREAD_MUTEX_INITIALIZER;
+    ps->ikcp_mutex = ikcp_mutex;
     logging("init_kcpsess","kcps: %p", ps);
     return ps;
 }
 
-void manage_conn_map(struct connection_map_st *conn_m) {
+void send_fifo(char *cmd, char *conv) {
+    int fd;  
+    char buf[128];
+    sprintf(buf, "%s%s", cmd, conv);
+    fd=open(FIFO, O_WRONLY);
+    if(fd<0)
+    {
+        perror("open fifo error");
+        exit(1);
+    }
+    int cnt = write(fd, buf, strlen(buf));
+    logging("manage_conn_map", "sent: %s, %d bytes", buf, cnt);
+    close(fd);
+    exit(0);
+}
+
+void set_conv_dead(struct connection_map_st *conn_map, char *conv) {
+    map_t *node;
+    node = map_get(&conn_map->conv_session_map, conv);
+    if (node && node->val) {
+        struct kcpsess_st *kcps = node->val;
+        kcps->dead = 1;
+        int ret;
+        // ret = pthread_cancel(kcps->dev2kcpt);
+        // printf("cancel dev2kcpt ret: %d\n", ret);
+        // ret = pthread_cancel(kcps->kcp2devt);
+        // printf("cancel kcp2devt ret: %d\n", ret);
+        sleep(2);
+        close(kcps->dev_fd);
+        ikcp_release(kcps->kcp);
+        node->val=NULL;
+        free(kcps);
+        map_delete(&conn_map->conv_session_map, node);
+    }
+}
+
+void read_fifo(struct connection_map_st *conn_map) {
+    //logging("read_fifo", "invoke read_fifo");
+    if (conn_map->fifo_fd == -1 ) {
+        if (!access(FIFO,0)) {
+            conn_map->fifo_fd=open(FIFO, O_RDONLY|O_NONBLOCK);
+        }else{
+            if(mkfifo(FIFO, 0666)) {
+                perror("Mkfifo error");
+            }else{
+                conn_map->fifo_fd=open(FIFO, O_RDONLY|O_NONBLOCK);
+            }
+        }
+    }
+    if (conn_map->fifo_fd>=0) {
+        char buf[128];
+        memset(buf, '\0', 128);
+        int count=read(conn_map->fifo_fd, buf, 127);
+        if (count>7) {
+            logging("read_fifo", "read fifo: %s, %d bytes", buf, count);
+            // int conv;
+            char *conv = buf+3;
+            // memcpy(&conv, &buf+3, count-3);
+            // sprintf(buf, "%d", conv);
+            if (strncmp("ADD", buf, 3)==0) {
+                logging("read_fifo", "Added a new conv: %s", conv);
+                map_put(&conn_map->conv_session_map, conv, NULL);
+            }else if(strncmp("DEL", buf, 3)==0) {
+                set_conv_dead(conn_map, conv);
+            }
+        }
+    }
+    //logging("read_fifo", "exit read_fifo");
+}
+
+void manage_conn(struct connection_map_st *conn_m) {
     while (1)
     {
+        read_fifo(conn_m);
         map_t *node;
         for (node = map_first(&conn_m->conv_session_map); node; node=map_next(&(node->node))) {
             if (!node->val) {
                 struct kcpsess_st *kcps = init_kcpsess(conn_m, atoi(node->key));
-                logging("manage_conn_map", "server init_kcpsess conv: %s kcps: %p", node->key, kcps);
+                logging("manage_conn", "server init_kcpsess conv: %s kcps: %p", node->key, kcps);
                 node->val = kcps;
                 //map_put(&conn_m->conv_session_map, node->key, kcps);
                 if (kcps->dev2kcpt==0) {
                     pthread_create(&kcps->dev2kcpt, NULL, dev2kcp, (void *)kcps);
                     pthread_detach(kcps->dev2kcpt);
-                    logging("manage_conn_map", "create dev2kcp thread: %ld", kcps->dev2kcpt);
+                    logging("manage_conn", "create dev2kcp thread: %ld", kcps->dev2kcpt);
                 }
                 if (kcps->kcp2devt==0) {
                     pthread_create(&kcps->kcp2devt, NULL, kcp2dev, (void *)kcps);
                     pthread_detach(kcps->kcp2devt);
-                    logging("manage_conn_map", "create kcp2dev thread: %ld", kcps->kcp2devt);
+                    logging("manage_conn", "create kcp2dev thread: %ld", kcps->kcp2devt);
                 }
             }
         }
@@ -72,11 +147,11 @@ void manage_conn_map(struct connection_map_st *conn_m) {
 void handle(int sock_fd)
 {
     struct connection_map_st conn_map;
+    conn_map.sock_fd = sock_fd;
+    conn_map.fifo_fd=-1;
     conn_map.conv_session_map = RB_ROOT;
     map_put(&conn_map.conv_session_map, DEFAULT_ALLOWED_CONV, NULL);
-    map_put(&conn_map.conv_session_map, "28446", NULL);
 
-    conn_map.sock_fd = sock_fd;
     pthread_t udp2kcpt, updateloopt;
 
     pthread_create(&udp2kcpt, NULL, udp2kcp_server, (void *)&conn_map);
@@ -87,7 +162,7 @@ void handle(int sock_fd)
     pthread_detach(updateloopt);
     logging("handle", "create kcpupdate_server thread: %ld", updateloopt);
 
-    manage_conn_map(&conn_map);
+    manage_conn(&conn_map);
 }
 
 static const struct option long_option[]={
@@ -96,14 +171,17 @@ static const struct option long_option[]={
    {"no-crypt",no_argument,NULL,'C'},
    {"crypt-algo",required_argument,NULL,'A'},
    {"crypt-mode",required_argument,NULL,'M'},
-   {"mode",required_argument,NULL,'m'}, 
+   {"mode",required_argument,NULL,'m'},
+   {"del",required_argument,NULL,'X'},
+   {"add",required_argument,NULL,'Y'},
    {"debug",no_argument,NULL,'d'},
    {"help",no_argument,NULL,'h'},
    {NULL,0,NULL,0}
 };
 
+
 void print_help() {
-    printf("server [--bind=0.0.0.0] [--port=8888] [--no-crypt] [--crypt-algo=twofish] [--crypt-mode=cbc] [--mode=3] [--debug]\n");
+    printf("server [--bind=0.0.0.0] [--port=8888] [--no-crypt] [--crypt-algo=twofish] [--crypt-mode=cbc] [--mode=3] [--add=38837] [--del=38837] [--debug]\n");
     exit(0);
 }
 
@@ -113,6 +191,7 @@ int main(int argc, char *argv[])
     init_logging();
     char *bind_addr = "0.0.0.0";
     int server_port = SERVER_PORT;
+    char *cmd = "ADD";
     int opt=0;
     while((opt=getopt_long(argc,argv,"p:c:h",long_option,NULL))!=-1)
     {
@@ -131,6 +210,10 @@ int main(int argc, char *argv[])
                 set_mcrypt_mode(optarg); break;
             case 'm': 
                 set_mode(atoi(optarg)); break;
+            case 'X': 
+                send_fifo("DEL", optarg); break;
+            case 'Y': 
+                send_fifo("ADD", optarg); break;
             case 'd': 
                 set_debug(); break;
             case 'h': 

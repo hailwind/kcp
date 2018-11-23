@@ -1,5 +1,5 @@
 CC = gcc
-all: server client testing
+all: server client testing rmo
 
 server: common.o server.o
 	$(CC) -g -rdynamic -lmcrypt -lpthread bin/server.o bin/common.o bin/ikcp.o bin/rbtree.o -o bin/server

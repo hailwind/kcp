@@ -100,6 +100,11 @@ static void map_free(map_t *node){
     }
 }
 
+static int map_delete(root_t *root, map_t *node) {
+    rb_erase(&node->node, root);
+    map_free(node);
+}
+
 #endif  //_MAP_H
 
 /* vim: set ts=4 sw=4 sts=4 tw=100 */

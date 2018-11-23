@@ -17,6 +17,7 @@
 #include <sys/wait.h>
 #include <sys/types.h>
 #include <sys/ioctl.h>
+#include <sys/stat.h>
 
 #include <linux/if.h>
 #include <linux/if_tun.h>
@@ -28,7 +29,7 @@
 #define SERVER_IP "192.168.10.11"
 #define SERVER_PORT 8888
 
-#define ENABLED_LOG {"init_tap", "manage_conn_map"}
+#define ENABLED_LOG {"warning", "handle", "init_tap", "read_fifo", "manage_conn"}
 
 #define DEFAULT_ALLOWED_CONV "28445"
 
@@ -76,6 +77,8 @@ struct kcpsess_st
 	uint64_t last_alive_time;
 	pthread_t kcp2devt;
 	pthread_t dev2kcpt;
+	int dead;
+	pthread_mutex_t ikcp_mutex;
 };
 
 typedef struct kcpsess_st * kcpsess_pt;
@@ -83,6 +86,7 @@ typedef struct kcpsess_st * kcpsess_pt;
 struct connection_map_st
 {
 	int sock_fd;
+	int fifo_fd;
 	root_t conv_session_map;    //k: conv, v: kcpsess_st
 };
 
