@@ -164,55 +164,44 @@ void init_kcp(struct kcpsess_st *ps)
     kcp_->rx_minrto = RX_MINRTO;
     kcp_->output = udp_output;
     if (ps->kcp) {
-        //logging("init_kcp", "release kcp: %p", ps->kcp->buffer);
+        logging("init_kcp", "release kcp: %p, buffer: %p", ps->kcp, ps->kcp->buffer);
         ikcp_release(ps->kcp);
     }
     ps->kcp=kcp_;
     ps->sess_id = 0;
 }
 
-struct kcpsess_st * init_kcpsess(struct connection_map_st *conn_map, 
-                                uint32_t conv, 
-                                struct sockaddr_in *client, 
-                                int client_len)
+void *udp2kcp_client(void *data)
 {
-    int dev_fd = init_tap(conv);
-    struct kcpsess_st *ps = (struct kcpsess_st *)malloc(sizeof(struct kcpsess_st));
-    ps->sock_fd = conn_map->sock_fd;
-    ps->dev_fd = dev_fd;
-    ps->conv = conv;
-    ps->dst = (struct sockaddr_in *)malloc(client_len);
-    memcpy(ps->dst, client, client_len);
-    ps->dst_len = client_len;
-    ps->sess_id = 0;
-    ps->dev2kcpt = 0;
-    ps->kcp2devt = 0;
-    init_kcp(ps);
-    logging("init_kcpsess","kcps: %p, kcp: %p, buffer: %p", ps, ps->kcp, ps->kcp->buffer);
-    return ps;
-}
-
-int udp_output(const char *buf, int len, ikcpcb *kcp, void *user)
-{
-    logging("udp_output", "udp_output-1 %ld",timstamp());
-    logging("udp_output", "length %d", len);
-    struct kcpsess_st *kcps = (struct kcpsess_st *)user;
-    
-    pthread_mutex_lock(&sess_id_mutex);
-    char *x;
-    memcpy(&x, &buf, sizeof(buf));
-    set_session(x, len, kcps->sess_id);
-    len += 4;
-    pthread_mutex_unlock(&sess_id_mutex);
-    int cnt = sendto(kcps->sock_fd, buf, len, 0, (struct sockaddr *)kcps->dst, sizeof(*kcps->dst));
-    if (cnt < 0)
+    char buff[RCV_BUFF_LEN];
+    struct kcpsess_st *kcps = (struct kcpsess_st *)data;
+    while (1)
     {
-        logging("udp_output", "addr: %s port: %d", inet_ntoa(kcps->dst->sin_addr), ntohs(kcps->dst->sin_port));
-        logging("udp_output", "udp send failed");
+        int cnt = recvfrom(kcps->sock_fd, &buff, RCV_BUFF_LEN, 0, (struct sockaddr *)&kcps->dst, &(kcps->dst_len));
+        if (cnt < 0)
+        {
+            continue;
+        }
+        logging("udp2kcp_client", "udp2kcp-1 %ld",timstamp());
+        uint32_t sess_id = get_session(&buff, cnt);
+        cnt-=4;
+        pthread_mutex_lock(&sess_id_mutex);
+        if (kcps->sess_id==0) {
+            kcps->sess_id = sess_id;
+        }
+        if (kcps->sess_id!=sess_id) {
+            logging("udp2kcp_client", "client reinit_kcp=========== sess_id: %d", sess_id);
+            init_kcp((struct kcpsess_st *)data);
+            kcps->sess_id = sess_id;
+        }
+        pthread_mutex_unlock(&sess_id_mutex);
+
+        logging("udp2kcp_client", "recvfrom udp packet: %d addr: %s sess_id: %d", cnt, inet_ntoa(kcps->dst.sin_addr), kcps->sess_id);
+        pthread_mutex_lock(&ikcp_mutex);
+        ikcp_input(kcps->kcp, buff, cnt);
+        pthread_mutex_unlock(&ikcp_mutex);
+        logging("udp2kcp_client", "udp2kcp-2 %ld",timstamp());
     }
-    logging("udp_output", "kcp.state: %d sess_id: %d", kcp->state, kcps->sess_id);
-    logging("udp_output", "udp_output-2 %ld",timstamp());
-    return 0;
 }
 
 void *udp2kcp_server(void *data)
@@ -234,67 +223,31 @@ void *udp2kcp_server(void *data)
         char conv_str[20];
         sprintf(conv_str, "%d", conv);
         logging("udp2kcp_server", "udp2kcp-x %d", conv);
-        if (!map_get(&conn_map->allowed_conv, conv_str)){
-            continue;
-        }
-        uint32_t sess_id = get_session(&buff, cnt);
-        cnt-=4;
+
         pthread_mutex_lock(&sess_id_mutex);
-        void *session = map_get(&conn_map->conv_session_map, conv_str);
-        if (!session)
-        {
-            logging("udp2kcp_server", "server init_kcp=========== sess_id: %d", sess_id);
-            kcps = init_kcpsess(conn_map, conv, &client, client_len);
-            sess_id = 30000 + rand() % 10000;
-            kcps->sess_id = sess_id;
-            map_put(&conn_map->conv_session_map, conv_str, kcps);
-        }else{
-            kcps = (struct kcpsess_st * )session;
-            if (sess_id==0) {
+        map_t *node = map_get(&conn_map->conv_session_map, conv_str);
+        if (node && node->val) {
+            uint32_t sess_id = get_session(&buff, cnt);
+            cnt-=4;
+            kcps = (struct kcpsess_st * )node->val;
+            if (sess_id==0 || !kcps->kcp) {
+                logging("udp2kcp_server", "server reinit_kcp sess_id: %d, kcps: %p, kcp: %p", sess_id, kcps, kcps->kcp);
+                memcpy(&kcps->dst, &client, client_len);
+                kcps->dst_len = client_len;
                 init_kcp(kcps);
                 sess_id = 30000 + rand() % 10000;
                 kcps->sess_id = sess_id;
             }
+        }else{
+            logging("warning", "CONV NOT EXISTS or NOT INIT COMPLETED %s", conv_str);
+            continue;
         }
         pthread_mutex_unlock(&sess_id_mutex);
-        logging("udp2kcp_server", "recvfrom udp packet: %d addr: %s sess_id: %d, kcps: %p, kcp: %p", cnt, inet_ntoa(kcps->dst->sin_addr), kcps->sess_id, kcps, kcps->kcp);
+        logging("udp2kcp_server", "recvfrom udp packet: %d addr: %s sess_id: %d, kcps: %p, kcp: %p", cnt, inet_ntoa(kcps->dst.sin_addr), kcps->sess_id, kcps, kcps->kcp);
         pthread_mutex_lock(&ikcp_mutex);
         int ret = ikcp_input(kcps->kcp, buff, cnt);
         pthread_mutex_unlock(&ikcp_mutex);
         logging("udp2kcp_server", "udp2kcp-2 %ld, result: %d",timstamp(), ret);
-    }
-}
-
-void *udp2kcp_client(void *data)
-{
-    char buff[RCV_BUFF_LEN];
-    struct kcpsess_st *kcps = (struct kcpsess_st *)data;
-    while (1)
-    {
-        int cnt = recvfrom(kcps->sock_fd, &buff, RCV_BUFF_LEN, 0, (struct sockaddr *)kcps->dst, &(kcps->dst_len));
-        if (cnt < 0)
-        {
-            continue;
-        }
-        logging("udp2kcp_client", "udp2kcp-1 %ld",timstamp());
-        uint32_t sess_id = get_session(&buff, cnt);
-        cnt-=4;
-        pthread_mutex_lock(&sess_id_mutex);
-        if (kcps->sess_id==0) {
-            kcps->sess_id = sess_id;
-        }
-        if (kcps->sess_id!=sess_id) {
-            logging("udp2kcp_client", "client reinit_kcp=========== sess_id: %d", sess_id);
-            init_kcp((struct kcpsess_st *)data);
-            kcps->sess_id = sess_id;
-        }
-        pthread_mutex_unlock(&sess_id_mutex);
-
-        logging("udp2kcp_client", "recvfrom udp packet: %d addr: %s sess_id: %d", cnt, inet_ntoa(kcps->dst->sin_addr), kcps->sess_id);
-        pthread_mutex_lock(&ikcp_mutex);
-        ikcp_input(kcps->kcp, buff, cnt);
-        pthread_mutex_unlock(&ikcp_mutex);
-        logging("udp2kcp_client", "udp2kcp-2 %ld",timstamp());
     }
 }
 
@@ -383,11 +336,11 @@ void *kcp2dev(void *data)
             isleep(2);
             continue;
         }
-        logging("kcp2dev", "recv-1");
+        //logging("kcp2dev", "recv-1");
         pthread_mutex_lock(&ikcp_mutex);
         int cnt = ikcp_recv(kcps->kcp, buff, RCV_BUFF_LEN);
         pthread_mutex_unlock(&ikcp_mutex);
-        logging("kcp2dev", "recv-2 %d", cnt);
+        //logging("kcp2dev", "recv-2 %d", cnt);
         if (cnt < 0)
         {
             x++;
@@ -421,6 +374,29 @@ void *kcp2dev(void *data)
     }
 }
 
+int udp_output(const char *buf, int len, ikcpcb *kcp, void *user)
+{
+    logging("udp_output", "udp_output-1 %ld",timstamp());
+    logging("udp_output", "length %d", len);
+    struct kcpsess_st *kcps = (struct kcpsess_st *)user;
+    
+    pthread_mutex_lock(&sess_id_mutex);
+    char *x;
+    memcpy(&x, &buf, sizeof(buf)); // const 指针不能直接赋值给另外一个可变指针，所以用拷贝指针地址的方法创建一个新的临时指针．
+    set_session(x, len, kcps->sess_id);
+    len += 4;
+    pthread_mutex_unlock(&sess_id_mutex);
+    int cnt = sendto(kcps->sock_fd, buf, len, 0, (struct sockaddr *)&kcps->dst, kcps->dst_len);
+    if (cnt < 0)
+    {
+        logging("udp_output", "addr: %s port: %d", inet_ntoa(kcps->dst.sin_addr), ntohs(kcps->dst.sin_port));
+        logging("udp_output", "udp send failed");
+    }
+    logging("udp_output", "kcp.state: %d sess_id: %d", kcp->state, kcps->sess_id);
+    logging("udp_output", "udp_output-2 %ld",timstamp());
+    return 0;
+}
+
 void * kcpupdate_server(void *data)
 {
     struct connection_map_st *conn_m = (struct connection_map_st *)data;
@@ -443,7 +419,7 @@ void * kcpupdate_server(void *data)
     }
 }
 
-void update_loop(struct kcpsess_st *kcps)
+void kcpupdate_client(struct kcpsess_st *kcps)
 {
     while (1)
     {

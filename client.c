@@ -7,10 +7,9 @@ void handle(int dev_fd, int sock_fd, int conv, struct sockaddr_in *dst)
     ps.sock_fd = sock_fd;
     ps.dev_fd = dev_fd;
     ps.conv = conv;
-    ps.dst = dst;
-    ps.dst_len = sizeof(dst);
+    ps.dst = *dst;
+    ps.dst_len = sizeof(ps.dst);
     ps.kcp=NULL;
-    //init_kcp(&ps, 2);
 
     pthread_t udp2kcpt, dev2kcpt, kcp2devt;
 
@@ -23,7 +22,7 @@ void handle(int dev_fd, int sock_fd, int conv, struct sockaddr_in *dst)
     pthread_create(&kcp2devt, NULL, kcp2dev, (void *)&ps);
     pthread_detach(kcp2devt);
 
-    update_loop(&ps);
+    kcpupdate_client(&ps);
 }
 
 int learn=0;

@@ -28,7 +28,7 @@
 #define SERVER_IP "192.168.10.11"
 #define SERVER_PORT 8888
 
-#define ENABLED_LOG {"init_tap"}
+#define ENABLED_LOG {"init_tap", "manage_conn_map"}
 
 #define DEFAULT_ALLOWED_CONV "28445"
 
@@ -71,7 +71,7 @@ struct kcpsess_st
     int dev_fd;
 	int sock_fd;
 	ikcpcb *kcp;
-    struct sockaddr_in *dst;
+    struct sockaddr_in dst;
 	socklen_t dst_len;
 	uint64_t last_alive_time;
 	pthread_t kcp2devt;
@@ -83,7 +83,6 @@ typedef struct kcpsess_st * kcpsess_pt;
 struct connection_map_st
 {
 	int sock_fd;
-	root_t allowed_conv;		//k: conv, v: 1
 	root_t conv_session_map;    //k: conv, v: kcpsess_st
 };
 
@@ -103,17 +102,11 @@ void set_mcrypt_algo(char *arg);
 
 void set_mcrypt_mode(char *arg);
 
-void init_mcrypt(struct mcrypt_st *mcrypt);
-
 int udp_output(const char *buf, int len, ikcpcb *kcp, void *user);
 
 int init_tap(uint32_t conv);
 
 void init_kcp(struct kcpsess_st *ps);
-struct kcpsess_st * init_kcpsess(struct connection_map_st *conn_map, 
-								uint32_t conv, 
-								struct sockaddr_in *client, 
-								int client_len);
 
 void * udp2kcp_server(void *data);
 
@@ -125,7 +118,7 @@ void * kcp2dev(void *data);
 
 void * kcpupdate_server(void *data);
 
-void update_loop(struct kcpsess_st *kcps);
+void kcpupdate_client(struct kcpsess_st *kcps);
 
 /* get system time */
 static inline void itimeofday(long *sec, long *usec)

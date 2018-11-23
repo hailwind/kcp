@@ -54,10 +54,8 @@ static int map_put(root_t *root, const char* key, void* val) {
     map_t *data = (map_t*)malloc(sizeof(map_t));
     data->key = (char*)malloc(sizeof(key));
     strcpy(data->key, key);
-    //data->val = val;
-    if (val)
-        memcpy(&data->val, &val, sizeof(val));
-    
+    data->val = val;
+
     rb_node_t **new_node = &(root->rb_node), *parent = NULL;
     while (*new_node) {
         map_t *this_node = container_of(*new_node, map_t, node);

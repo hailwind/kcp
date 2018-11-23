@@ -27,23 +27,41 @@ static int listening(char *bind_addr, int port)
     return server_fd;
 }
 
-void manage_threads(struct connection_map_st *conn_m) {
-    struct kcpsess_st *kcps;
+struct kcpsess_st * init_kcpsess(struct connection_map_st *conn_map, 
+                                uint32_t conv)
+{
+    int dev_fd = init_tap(conv);
+    struct kcpsess_st *ps = (struct kcpsess_st *)malloc(sizeof(struct kcpsess_st));
+    ps->sock_fd = conn_map->sock_fd;
+    ps->dev_fd = dev_fd;
+    ps->conv = conv;
+    ps->kcp = NULL;
+    ps->sess_id = 0;
+    ps->dev2kcpt = 0;
+    ps->kcp2devt = 0;
+    logging("init_kcpsess","kcps: %p", ps);
+    return ps;
+}
+
+void manage_conn_map(struct connection_map_st *conn_m) {
     while (1)
     {
         map_t *node;
         for (node = map_first(&conn_m->conv_session_map); node; node=map_next(&(node->node))) {
-            if (node->val) {
-                kcps = (struct kcpsess_st *)node->val;
+            if (!node->val) {
+                struct kcpsess_st *kcps = init_kcpsess(conn_m, atoi(node->key));
+                logging("manage_conn_map", "server init_kcpsess conv: %s kcps: %p", node->key, kcps);
+                node->val = kcps;
+                //map_put(&conn_m->conv_session_map, node->key, kcps);
                 if (kcps->dev2kcpt==0) {
                     pthread_create(&kcps->dev2kcpt, NULL, dev2kcp, (void *)kcps);
                     pthread_detach(kcps->dev2kcpt);
-                    logging("manage_threads", "create dev2kcp thread: %d", kcps->dev2kcpt);
+                    logging("manage_conn_map", "create dev2kcp thread: %ld", kcps->dev2kcpt);
                 }
                 if (kcps->kcp2devt==0) {
                     pthread_create(&kcps->kcp2devt, NULL, kcp2dev, (void *)kcps);
                     pthread_detach(kcps->kcp2devt);
-                    logging("manage_threads", "create kcp2dev thread: %d", kcps->kcp2devt);
+                    logging("manage_conn_map", "create kcp2dev thread: %ld", kcps->kcp2devt);
                 }
             }
         }
@@ -55,22 +73,21 @@ void handle(int sock_fd)
 {
     struct connection_map_st conn_map;
     conn_map.conv_session_map = RB_ROOT;
-    conn_map.allowed_conv = RB_ROOT;
-    map_put(&conn_map.allowed_conv, DEFAULT_ALLOWED_CONV, NULL);
+    map_put(&conn_map.conv_session_map, DEFAULT_ALLOWED_CONV, NULL);
+    map_put(&conn_map.conv_session_map, "28446", NULL);
 
     conn_map.sock_fd = sock_fd;
-    struct sockaddr_in client;
     pthread_t udp2kcpt, updateloopt;
 
     pthread_create(&udp2kcpt, NULL, udp2kcp_server, (void *)&conn_map);
     pthread_detach(udp2kcpt);
-    logging("handle", "create udp2kcp_server thread: %d", udp2kcpt);
+    logging("handle", "create udp2kcp_server thread: %ld", udp2kcpt);
 
     pthread_create(&updateloopt, NULL, kcpupdate_server, (void *)&conn_map);
     pthread_detach(updateloopt);
-    logging("handle", "create kcpupdate_server thread: %d", updateloopt);
+    logging("handle", "create kcpupdate_server thread: %ld", updateloopt);
 
-    manage_threads(&conn_map);
+    manage_conn_map(&conn_map);
 }
 
 static const struct option long_option[]={
@@ -93,18 +110,6 @@ void print_help() {
 // server [--algo=twofish] [--mode=cbc]
 int main(int argc, char *argv[])
 {
-    // struct connection_map_st conn_map;
-    // conn_map.conv_session_map = RB_ROOT;
-    // map_put(&conn_map.allowed_conv, DEFAULT_ALLOWED_CONV, NULL);
-    // struct kcpsess_st x;
-    // printf("%p\n", &x);
-    // kcpsess_pt kcps = &x;
-    // printf("%p\n", kcps);
-    // map_put(&conn_map.conv_session_map, "0001", kcps);
-    // map_t *ptr = map_get(&conn_map.conv_session_map, "0001");
-    // printf("%p\n", ptr->val);
-    // exit(0);
-
     init_logging();
     char *bind_addr = "0.0.0.0";
     int server_port = SERVER_PORT;
