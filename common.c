@@ -334,6 +334,7 @@ void *dev2kcp(void *data)
             read_times++;
         }
     }
+    logging("warning", "dev2kcp thread go to dead, conv: %d", kcps->conv);
 }
 
 void *kcp2dev(void *data)
@@ -394,6 +395,7 @@ void *kcp2dev(void *data)
         total_len=16;
         logging("kcp2dev", "kcp2dev-2 %ld",timstamp());
     }
+    logging("warning", "kcp2dev thread go to dead, conv: %d", kcps->conv);
 }
 
 int udp_output(const char *buf, int len, ikcpcb *kcp, void *user)

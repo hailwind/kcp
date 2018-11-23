@@ -29,9 +29,9 @@
 #define SERVER_IP "192.168.10.11"
 #define SERVER_PORT 8888
 
-#define ENABLED_LOG {"warning", "handle", "init_tap", "read_fifo", "manage_conn"}
+#define ENABLED_LOG {"notice", "warning", "handle", "init_tap", "read_fifo", "manage_conn"}
 
-#define DEFAULT_ALLOWED_CONV "28445"
+//#define DEFAULT_ALLOWED_CONV "28445"
 
 //IKCP PARAMETERS DEFINE
 //int nodelay, int interval, int resend, int nc
