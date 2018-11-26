@@ -1,7 +1,7 @@
 #include "common.h"
 #include <getopt.h>
 
-void handle(int dev_fd, int sock_fd, int conv, struct sockaddr_in *dst)
+void handle(int dev_fd, int sock_fd, int conv, struct sockaddr_in *dst, char *key)
 {
     struct kcpsess_st ps;
     ps.sock_fd = sock_fd;
@@ -11,6 +11,7 @@ void handle(int dev_fd, int sock_fd, int conv, struct sockaddr_in *dst)
     ps.dst_len = sizeof(ps.dst);
     ps.kcp=NULL;
     ps.dead=0;
+    strncpy(ps.key, key, sizeof(ps.key));
     pthread_mutex_t ikcp_mutex = PTHREAD_MUTEX_INITIALIZER;
     ps.ikcp_mutex = ikcp_mutex;
 
@@ -34,6 +35,7 @@ static const struct option long_option[]={
    {"port",required_argument,NULL,'p'},
    {"conv",required_argument,NULL,'c'},
    {"no-crypt",no_argument,NULL,'C'},
+   {"crypt-key",required_argument,NULL,'k'},
    {"crypt-algo",required_argument,NULL,'A'},
    {"crypt-mode",required_argument,NULL,'M'},
    {"mode",required_argument,NULL,'m'}, 
@@ -43,7 +45,7 @@ static const struct option long_option[]={
 };
 
 void print_help() {
-    printf("client --server=192.168.1.1 [--port=8888] --conv=28445 [--no-crypt] [--crypt-algo=twofish] [--crypt-mode=cbc] [--mode=3] [--debug]\n");
+    printf("client --server=192.168.1.1 [--port=8888] --conv=28445 [--no-crypt] --crypt-key=0123456789012345678901234567890 [--crypt-algo=twofish] [--crypt-mode=cbc] [--mode=3] [--debug]\n");
     exit(0);
 }
 
@@ -52,6 +54,7 @@ int main(int argc, char *argv[])
 {
     init_logging();
     char * server_addr;
+    char * key;
     int server_port = SERVER_PORT;
     int conv=-1;
     int opt=0;
@@ -68,6 +71,8 @@ int main(int argc, char *argv[])
                 conv=atoi(optarg); break;
             case 'C':
                 set_nocrypt(); break;
+            case 'k':
+                key=optarg; break;
             case 'A': 
                 set_mcrypt_algo(optarg); break;
             case 'M': 
@@ -97,8 +102,9 @@ int main(int argc, char *argv[])
     ser_addr.sin_family = AF_INET;
     ser_addr.sin_addr.s_addr = inet_addr(server_addr);
     ser_addr.sin_port = htons(server_port);
-    handle(dev_fd, sock_fd, conv, &ser_addr);
-    logging("client", "close");
+    logging("client", "open server_addr: %s, server_port: %d, key: %s, keyp: %p", server_addr, server_port, key, &key);
+    handle(dev_fd, sock_fd, conv, &ser_addr, key);
+    logging("client", "close.");
     close(sock_fd);
     close(dev_fd);
 

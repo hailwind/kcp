@@ -76,18 +76,17 @@ uint32_t get_conv(void *buf) {
     return conv_id;
 }
 
-void init_mcrypt(struct mcrypt_st *mcrypt)
+void init_mcrypt(struct mcrypt_st *mcrypt, char *key)
 {
     if (crypt) {
-        char key[] = KEY;
         mcrypt->td = mcrypt_module_open(crypt_algo, NULL, crypt_mode, NULL);
         if (mcrypt->td == MCRYPT_FAILED)
         {
-            logging("init_mcrypt", "mcrypt_module_open failed algo=%s mode=%s keysize=%d", crypt_algo, crypt_mode, sizeof(key));
+            logging("init_mcrypt", "mcrypt_module_open failed algo=%s mode=%s key=%s keysize=%d", crypt_algo, crypt_mode, key, sizeof(key));
             exit(3);
         }
         mcrypt->blocksize = mcrypt_enc_get_block_size(mcrypt->td);
-        mcrypt_generic_init(mcrypt->td, key, sizeof(key), NULL);
+        mcrypt_generic_init(mcrypt->td, key, sizeof(*key), NULL);
         mcrypt->enc_state_size = sizeof mcrypt->enc_state;
         mcrypt_enc_get_state(mcrypt->td, mcrypt->enc_state, &mcrypt->enc_state_size);
     }
@@ -252,7 +251,7 @@ void *dev2kcp(void *data)
     char buff[RCV_BUFF_LEN];
     struct kcpsess_st *kcps = (struct kcpsess_st *)data;
     struct mcrypt_st mcrypt;
-    init_mcrypt(&mcrypt);
+    init_mcrypt(&mcrypt, kcps->key);
     int sleep_times=0;
     int read_times=0;
     uint16_t total_frms=0;
@@ -341,7 +340,7 @@ void *kcp2dev(void *data)
     char buff[RCV_BUFF_LEN];
     struct kcpsess_st *kcps = (struct kcpsess_st *)data;
     struct mcrypt_st mcrypt;
-    init_mcrypt(&mcrypt);
+    init_mcrypt(&mcrypt, kcps->key);
     int x = 0;
     uint16_t total_frms=0;
     uint16_t total_len=16;

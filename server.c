@@ -30,7 +30,7 @@ static int listening(char *bind_addr, int port)
 }
 
 struct kcpsess_st * init_kcpsess(struct connection_map_st *conn_map, 
-                                uint32_t conv)
+                                uint32_t conv, char *key)
 {
     int dev_fd = init_tap(conv);
     struct kcpsess_st *ps = (struct kcpsess_st *)malloc(sizeof(struct kcpsess_st));
@@ -42,6 +42,7 @@ struct kcpsess_st * init_kcpsess(struct connection_map_st *conn_map,
     ps->dev2kcpt = 0;
     ps->kcp2devt = 0;
     ps->dead = 0;
+    strncpy(ps->key, key, 32);
     pthread_mutex_t ikcp_mutex = PTHREAD_MUTEX_INITIALIZER;
     ps->ikcp_mutex = ikcp_mutex;
     logging("init_kcpsess","kcps: %p", ps);
@@ -95,12 +96,33 @@ int open_fifo(int port, char rw) {
     return fifo_fd;
 }
 
-void send_fifo(int fifo_fd, char *cmd, char *conv) {
+void send_fifo(int fifo_fd, char *cmd, char *conv, char *key) {
     char buf[128];
-    sprintf(buf, "%s%s\n", cmd, conv);
+    strcat(buf, cmd);
+    strcat(buf, conv);
+    if(key) {
+        strcat(buf, "&");
+        strcat(buf, key);
+    }
+    strcat(buf, "\n");
+    // sprintf(buf, "%s%s&%s\n", cmd, conv, key);
+  
     int cnt = write(fifo_fd, buf, strlen(buf));
     logging("notice", "sent %d bytes: %s", cnt, buf);
     exit(0);
+}
+
+void start_thread(struct kcpsess_st *kcps) {
+    if (kcps->dev2kcpt==0) {
+        pthread_create(&kcps->dev2kcpt, NULL, dev2kcp, (void *)kcps);
+        pthread_detach(kcps->dev2kcpt);
+        logging("read_fifo", "create dev2kcp thread: %ld", kcps->dev2kcpt);
+    }
+    if (kcps->kcp2devt==0) {
+        pthread_create(&kcps->kcp2devt, NULL, kcp2dev, (void *)kcps);
+        pthread_detach(kcps->kcp2devt);
+        logging("read_fifo", "create kcp2dev thread: %ld", kcps->kcp2devt);
+    }
 }
 
 void read_fifo(struct connection_map_st *conn_map) {
@@ -109,19 +131,29 @@ void read_fifo(struct connection_map_st *conn_map) {
         char buf[128];
         memset(buf, '\0', 128);
         int count=read(conn_map->fifo_fd, buf, 127);
+        char *conv;
+        char *key;
+        int tmp=0;
+        logging("read_fifo", "read fifo: %s, %d bytes", buf, count);
+        conv = (void *)&buf+3;
         if (count>7) {
             for (int i=3;i<count;i++) {
-                if (buf[i]=='\n' || buf[i]=='\0') {
+                if (buf[i]=='&') {
+                    buf[i]='\0';
+                    key = (void *)&buf + i +1;
+                }
+                if (buf[i]=='\n') {
                     buf[i]='\0';
                     break;
                 }
             }
-            logging("read_fifo", "read fifo: %s, %d bytes", buf, count);
-            char *conv = buf+3;
             if (strncmp("ADD", buf, 3)==0) {
                 map_t *node = map_get(&conn_map->conv_session_map, conv);
                 if (!node) {
-                    map_put(&conn_map->conv_session_map, conv, NULL);
+                    struct kcpsess_st *kcps = init_kcpsess(conn_map, atoi(conv), key);
+                    start_thread(kcps);
+                    map_put(&conn_map->conv_session_map, conv, kcps);
+                    logging("read_fifo", "server init_kcpsess conv: %s key: %s kcps: %p", conv, key, kcps);
                 }else{
                     logging("read_fifo", "conv %s exists.", conv);
                 }
@@ -133,30 +165,11 @@ void read_fifo(struct connection_map_st *conn_map) {
     //logging("read_fifo", "exit read_fifo");
 }
 
+
 void manage_conn(struct connection_map_st *conn_m) {
     while (1)
     {
         read_fifo(conn_m);
-        map_t *node;
-        for (node = map_first(&conn_m->conv_session_map); node; node=map_next(&(node->node))) {
-            //logging("manage_conn", "process: %s, val: %p", node->key, node->val);
-            if (!node->val) {
-                struct kcpsess_st *kcps = init_kcpsess(conn_m, atoi(node->key));
-                logging("manage_conn", "server init_kcpsess conv: %s kcps: %p", node->key, kcps);
-                node->val = kcps;
-                //map_put(&conn_m->conv_session_map, node->key, kcps);
-                if (kcps->dev2kcpt==0) {
-                    pthread_create(&kcps->dev2kcpt, NULL, dev2kcp, (void *)kcps);
-                    pthread_detach(kcps->dev2kcpt);
-                    logging("manage_conn", "create dev2kcp thread: %ld", kcps->dev2kcpt);
-                }
-                if (kcps->kcp2devt==0) {
-                    pthread_create(&kcps->kcp2devt, NULL, kcp2dev, (void *)kcps);
-                    pthread_detach(kcps->kcp2devt);
-                    logging("manage_conn", "create kcp2dev thread: %ld", kcps->kcp2devt);
-                }
-            }
-        }
         isleep(5000);
     }
 }
@@ -189,6 +202,7 @@ static const struct option long_option[]={
    {"bind",required_argument,NULL,'b'},
    {"port",required_argument,NULL,'p'},
    {"no-crypt",no_argument,NULL,'C'},
+   {"crypt-key",required_argument,NULL,'k'},
    {"crypt-algo",required_argument,NULL,'A'},
    {"crypt-mode",required_argument,NULL,'M'},
    {"mode",required_argument,NULL,'m'},
@@ -201,7 +215,7 @@ static const struct option long_option[]={
 
 
 void print_help() {
-    printf("server [--bind=0.0.0.0] [--port=8888] [--no-crypt] [--crypt-algo=twofish] [--crypt-mode=cbc] [--mode=3] [--add=38837] [--del=38837] [--debug]\n");
+    printf("server [--bind=0.0.0.0] [--port=8888] [--no-crypt] --crypt-key=0123456789012345678901234567890 [--crypt-algo=twofish] [--crypt-mode=cbc] [--mode=3] [--add=38837] [--del=38837] [--debug]\n");
     exit(0);
 }
 
@@ -211,7 +225,9 @@ int main(int argc, char *argv[])
     init_logging();
     char *bind_addr = "0.0.0.0";
     int server_port = SERVER_PORT;
-    char *cmd = "ADD";
+    char *key = NULL;
+    char *conv = NULL;
+    char *cmd = NULL;
     int opt=0;
     while((opt=getopt_long(argc,argv,"p:c:h",long_option,NULL))!=-1)
     {
@@ -224,23 +240,33 @@ int main(int argc, char *argv[])
                 server_port=atoi(optarg); break;
             case 'C':
                 set_nocrypt(); break;
+            case 'k':
+                key=optarg; break;
             case 'A': 
                 set_mcrypt_algo(optarg); break;
             case 'M': 
                 set_mcrypt_mode(optarg); break;
             case 'm': 
                 set_mode(atoi(optarg)); break;
-            case 'X': 
-                send_fifo(open_fifo(server_port, 'W'), "DEL", optarg);
+            case 'X':
+                cmd = "DEL";
+                conv = optarg;
+                // send_fifo(open_fifo(server_port, 'W'), "DEL", optarg, key);
                 break;
-            case 'Y': 
-                send_fifo(open_fifo(server_port, 'W'), "ADD", optarg);
+            case 'Y':
+                cmd = "ADD";
+                conv = optarg;
+                // send_fifo(open_fifo(server_port, 'W'), "ADD", optarg, key);
                 break;
             case 'd': 
                 set_debug(); break;
             case 'h': 
                 print_help(); break;
         }
+    }
+    if(conv) {
+        send_fifo(open_fifo(server_port, 'W'), cmd, conv, key);
+        exit(0);
     }
     set_server();
     srand(time(NULL));

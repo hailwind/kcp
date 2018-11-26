@@ -72,6 +72,7 @@ struct kcpsess_st
     int dev_fd;
 	int sock_fd;
 	ikcpcb *kcp;
+	char key[32];
     struct sockaddr_in dst;
 	socklen_t dst_len;
 	uint64_t last_alive_time;
