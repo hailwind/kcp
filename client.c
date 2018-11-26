@@ -10,6 +10,7 @@ void handle(int dev_fd, int sock_fd, int conv, struct sockaddr_in *dst)
     ps.dst = *dst;
     ps.dst_len = sizeof(ps.dst);
     ps.kcp=NULL;
+    ps.dead=0;
     pthread_mutex_t ikcp_mutex = PTHREAD_MUTEX_INITIALIZER;
     ps.ikcp_mutex = ikcp_mutex;
 

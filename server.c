@@ -59,7 +59,7 @@ void set_conv_dead(struct connection_map_st *conn_map, char *conv) {
         ret = pthread_cancel(kcps->dev2kcpt);
         logging("notice", "cancel dev2kcpt ret: %d\n", ret);
         ret = pthread_cancel(kcps->kcp2devt);
-        printf("notice", "cancel kcp2devt ret: %d\n", ret);
+        logging("notice", "cancel kcp2devt ret: %d\n", ret);
         sleep(1);
         if (kcps->dev_fd>0) close(kcps->dev_fd);
         if (kcps->kcp) ikcp_release(kcps->kcp);
@@ -119,7 +119,12 @@ void read_fifo(struct connection_map_st *conn_map) {
             logging("read_fifo", "read fifo: %s, %d bytes", buf, count);
             char *conv = buf+3;
             if (strncmp("ADD", buf, 3)==0) {
-                map_put(&conn_map->conv_session_map, conv, NULL);
+                map_t *node = map_get(&conn_map->conv_session_map, conv);
+                if (!node) {
+                    map_put(&conn_map->conv_session_map, conv, NULL);
+                }else{
+                    logging("read_fifo", "conv %s exists.", conv);
+                }
             }else if(strncmp("DEL", buf, 3)==0) {
                 set_conv_dead(conn_map, conv);
             }
@@ -134,7 +139,7 @@ void manage_conn(struct connection_map_st *conn_m) {
         read_fifo(conn_m);
         map_t *node;
         for (node = map_first(&conn_m->conv_session_map); node; node=map_next(&(node->node))) {
-            logging("manage_conn", "process: %s, val: %p", node->key, node->val);
+            //logging("manage_conn", "process: %s, val: %p", node->key, node->val);
             if (!node->val) {
                 struct kcpsess_st *kcps = init_kcpsess(conn_m, atoi(node->key));
                 logging("manage_conn", "server init_kcpsess conv: %s kcps: %p", node->key, kcps);

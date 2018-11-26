@@ -100,7 +100,6 @@ int init_tap(uint32_t conv)
     char devname[20];
     sprintf(devname, "tap%d", conv);
     logging("init_tap", "devname: %s", devname);
-    int tuntap_flag = IFF_TAP;
     struct ifreq ifr;
     if ((dev = open(tun_device, O_RDWR)) < 0)
     {
@@ -108,7 +107,7 @@ int init_tap(uint32_t conv)
         exit(2);
     }
     memset(&ifr, 0, sizeof(ifr));
-    ifr.ifr_flags = tuntap_flag | IFF_NO_PI;
+    ifr.ifr_flags = IFF_TAP | IFF_NO_PI;
     strncpy(ifr.ifr_name, devname, IFNAMSIZ);
     if (ioctl(dev, TUNSETIFF, (void *)&ifr) < 0)
     {
@@ -236,7 +235,7 @@ void *udp2kcp_server(void *data)
                 kcps->sess_id = sess_id;
             }
         }else{
-            logging("warning", "CONV NOT EXISTS or NOT INIT COMPLETED %s", conv_str);
+            logging("udp2kcp_server", "CONV NOT EXISTS or NOT INIT COMPLETED %s", conv_str);
             continue;
         }
 
@@ -380,7 +379,7 @@ void *kcp2dev(void *data)
         }
         memcpy(&total_frms, (void *)&buff, 2);
         if (total_frms<=0 || total_frms>7) {
-            logging("warning", "alive frame or illegal data, r_addr: %s len: %d content: %s", inet_ntoa(kcps->dst.sin_addr), cnt, (void *)&buff+2);
+            logging("kcp2dev", "alive frame or illegal data, r_addr: %s len: %d content: %s", inet_ntoa(kcps->dst.sin_addr), cnt, (void *)&buff+2);
             //alive OR illegal
             continue;
         }
