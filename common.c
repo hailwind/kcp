@@ -302,6 +302,10 @@ void *dev2kcp(void *data)
                 //cnt = ((cnt - 1) / mcrypt.blocksize + 1) * mcrypt.blocksize; // pad to block size
                 mcrypt_generic(mcrypt.td, (void *)&buff, total_len);
                 mcrypt_enc_set_state(mcrypt.td, mcrypt.enc_state, mcrypt.enc_state_size);
+                if (mcrypt.td==MCRYPT_FAILED) {
+                    logging("notice", "crypt failed");
+                    continue;
+                }
                 logging("dev2kcp", "encrypt data: %d", total_len);
             }
             pthread_mutex_lock(&kcps->ikcp_mutex);
@@ -325,10 +329,10 @@ void *dev2kcp(void *data)
                         //cnt = ((cnt - 1) / mcrypt.blocksize + 1) * mcrypt.blocksize; // pad to block size
                         mcrypt_generic(mcrypt.td, (void *)&alive_buff, alive_buff_len);
                         mcrypt_enc_set_state(mcrypt.td, mcrypt.enc_state, mcrypt.enc_state_size);
-                    }
-                    if (mcrypt.td==MCRYPT_FAILED) {
-                        logging("notice", "crypt failed");
-                        continue;
+                        if (mcrypt.td==MCRYPT_FAILED) {
+                            logging("notice", "crypt failed");
+                            continue;
+                        }
                     }
                     //logging("warning", "alive_buff: %p", &alive_buff);
                     ikcp_send(kcps->kcp, alive_buff, alive_buff_len);
@@ -390,10 +394,10 @@ void *kcp2dev(void *data)
         {
             mdecrypt_generic(mcrypt.td, (void *)&buff, cnt);
             mcrypt_enc_set_state(mcrypt.td, mcrypt.enc_state, mcrypt.enc_state_size);
-        }
-        if (mcrypt.td==MCRYPT_FAILED) {
-            logging("notice", "decrypt failed");
-            continue;
+            if (mcrypt.td==MCRYPT_FAILED) {
+                logging("notice", "decrypt failed");
+                continue;
+            }
         }
         memcpy(&total_frms, (void *)&buff, 2);
         if (total_frms<=0 || total_frms>7) {
