@@ -345,7 +345,9 @@ void *dev2kcp(void *data)
             read_times++;
         }
     }
-    logging("warning", "dev2kcp thread go to dead, conv: %d", kcps->conv);
+    mcrypt_generic_deinit(mcrypt.td);
+    mcrypt_module_close(mcrypt.td);
+    logging("notice", "dev2kcp thread go to dead, conv: %d", kcps->conv);
 }
 
 void *kcp2dev(void *data)
@@ -401,7 +403,7 @@ void *kcp2dev(void *data)
         }
         uint16_t frm_size;
         for (int i=0;i<total_frms;i++) {
-            //printf("frm_size: %p, buff: %p x:%p\n", &frm_size, &buff+(i+1)*2);
+            //logging("kcp2dev", "frm_size: %p, buff: %p x:%p\n", &frm_size, &buff+(i+1)*2);
             memcpy(&frm_size, (void *)&buff+(i+1)*2, 2);
             int y = write(kcps->dev_fd, buff+total_len, frm_size);
             logging("kcp2dev", "write to dev: idx: %d, position: %d, size: %d, wrote: %d", i, total_len, frm_size, y);
@@ -410,7 +412,9 @@ void *kcp2dev(void *data)
         total_len=16;
         logging("kcp2dev", "kcp2dev-2 %ld",timstamp());
     }
-    logging("warning", "kcp2dev thread go to dead, conv: %d", kcps->conv);
+    mcrypt_generic_deinit(mcrypt.td);
+    mcrypt_module_close(mcrypt.td);
+    logging("notice", "kcp2dev thread go to dead, conv: %d", kcps->conv);
 }
 
 int udp_output(const char *buf, int len, ikcpcb *kcp, void *user)
