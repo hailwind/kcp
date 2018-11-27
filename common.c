@@ -34,6 +34,31 @@ void init_logging() {
     }
 }
 
+void create_pid(char * role, int conv) {
+    int pid = getpid();
+    FILE *pid_fd;
+    char f_name[256];
+    memset(f_name, '\0', 256);
+    
+    strcat(f_name, "/var/run/");
+    strcat(f_name, role);
+    if (strcmp(role, "client")==0) {
+        strcat(f_name, "_");
+        char buff[10];
+        memset(buff, '\0', 10);
+        sprintf(buff, "%d", conv);
+        strcat(f_name, buff);
+    }
+    strcat(f_name, ".pid");
+    pid_fd=fopen(f_name, "wt");
+    if (pid_fd < 0) {
+        logging("notice", "create pid file: %s fd: %d failed.", f_name, pid_fd);
+        exit(1);
+    }
+    fprintf(pid_fd, "%d", pid);
+    fclose(pid_fd);
+}
+
 void set_debug(){
     DEBUG=1;
 }

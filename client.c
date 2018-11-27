@@ -94,6 +94,7 @@ int main(int argc, char *argv[])
         logging("notice", "no key input or key too long, the length must be between 16 and 32");
         exit(1);
     }
+    create_pid("client", conv);
     int dev_fd = init_tap(conv);
     int sock_fd = socket(AF_INET, SOCK_DGRAM, 0);
     if (sock_fd < 0)
