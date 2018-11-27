@@ -3,6 +3,11 @@
 
 #define FIFO "/var/run/fifo"
 
+void print_help() {
+    printf("server [--bind=0.0.0.0] [--port=8888] [--no-crypt] --crypt-key=0123456789012345678901234567890 [--crypt-algo=twofish] [--crypt-mode=cbc] [--mode=3] [--add=38837] [--del=38837] [--debug]\n");
+    exit(0);
+}
+
 static int listening(char *bind_addr, int port)
 {
     struct sockaddr_in server;
@@ -69,7 +74,6 @@ void set_conv_dead(struct connection_map_st *conn_map, char *conv) {
     }
 }
 
-
 int open_fifo(int port, char rw) {
     int fifo_fd;
     char fifo_file[50];
@@ -96,37 +100,21 @@ int open_fifo(int port, char rw) {
     return fifo_fd;
 }
 
-void send_fifo(int fifo_fd, char *cmd, char *conv, char *key) {
-    char buf[128];
-    strcat(buf, cmd);
-    strcat(buf, conv);
-    if(key) {
-        strcat(buf, "&");
-        strcat(buf, key);
-    }
-    strcat(buf, "\n");
-    // sprintf(buf, "%s%s&%s\n", cmd, conv, key);
-  
-    int cnt = write(fifo_fd, buf, strlen(buf));
-    logging("notice", "sent %d bytes: %s", cnt, buf);
-    exit(0);
-}
 
 void start_thread(struct kcpsess_st *kcps) {
     if (kcps->dev2kcpt==0) {
         pthread_create(&kcps->dev2kcpt, NULL, dev2kcp, (void *)kcps);
         pthread_detach(kcps->dev2kcpt);
-        logging("read_fifo", "create dev2kcp thread: %ld", kcps->dev2kcpt);
+        logging("notice", "create dev2kcp thread: %ld", kcps->dev2kcpt);
     }
     if (kcps->kcp2devt==0) {
         pthread_create(&kcps->kcp2devt, NULL, kcp2dev, (void *)kcps);
         pthread_detach(kcps->kcp2devt);
-        logging("read_fifo", "create kcp2dev thread: %ld", kcps->kcp2devt);
+        logging("notice", "create kcp2dev thread: %ld", kcps->kcp2devt);
     }
 }
 
 void read_fifo(struct connection_map_st *conn_map) {
-    //logging("read_fifo", "invoke read_fifo");
     if (conn_map->fifo_fd>=0) {
         char buf[128];
         memset(buf, '\0', 128);
@@ -134,7 +122,7 @@ void read_fifo(struct connection_map_st *conn_map) {
         char *conv;
         char *key;
         int tmp=0;
-        logging("read_fifo", "read fifo: %s, %d bytes", buf, count);
+        //logging("read_fifo", "read fifo: %s, %d bytes", buf, count);
         conv = (void *)&buf+3;
         if (count>7) {
             for (int i=3;i<count;i++) {
@@ -165,6 +153,25 @@ void read_fifo(struct connection_map_st *conn_map) {
     //logging("read_fifo", "exit read_fifo");
 }
 
+
+void send_fifo(int fifo_fd, char *cmd, char *conv, char *key) {
+    char buf[128];
+    strcat(buf, cmd);
+    strcat(buf, conv);
+    if(key && strlen(key)>=16 && strlen(key)<=32) {
+        strcat(buf, "&");
+        strcat(buf, key);
+    }else{
+        logging("notice", "no key input or key too long, the length must be between 16 and 32");
+        print_help();
+        exit(1);
+    }
+    strcat(buf, "\n");
+  
+    int cnt = write(fifo_fd, buf, strlen(buf));
+    logging("notice", "sent %d bytes: %s", cnt, buf);
+    exit(0);
+}
 
 void manage_conn(struct connection_map_st *conn_m) {
     while (1)
@@ -213,12 +220,6 @@ static const struct option long_option[]={
    {NULL,0,NULL,0}
 };
 
-
-void print_help() {
-    printf("server [--bind=0.0.0.0] [--port=8888] [--no-crypt] --crypt-key=0123456789012345678901234567890 [--crypt-algo=twofish] [--crypt-mode=cbc] [--mode=3] [--add=38837] [--del=38837] [--debug]\n");
-    exit(0);
-}
-
 // server [--algo=twofish] [--mode=cbc]
 int main(int argc, char *argv[])
 {
@@ -251,12 +252,10 @@ int main(int argc, char *argv[])
             case 'X':
                 cmd = "DEL";
                 conv = optarg;
-                // send_fifo(open_fifo(server_port, 'W'), "DEL", optarg, key);
                 break;
             case 'Y':
                 cmd = "ADD";
                 conv = optarg;
-                // send_fifo(open_fifo(server_port, 'W'), "ADD", optarg, key);
                 break;
             case 'd': 
                 set_debug(); break;
@@ -264,9 +263,8 @@ int main(int argc, char *argv[])
                 print_help(); break;
         }
     }
-    if(conv) {
+    if(cmd && conv) {
         send_fifo(open_fifo(server_port, 'W'), cmd, conv, key);
-        exit(0);
     }
     set_server();
     srand(time(NULL));

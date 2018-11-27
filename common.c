@@ -85,8 +85,17 @@ void init_mcrypt(struct mcrypt_st *mcrypt, char *key)
             logging("init_mcrypt", "mcrypt_module_open failed algo=%s mode=%s key=%s keysize=%d", crypt_algo, crypt_mode, key, sizeof(key));
             exit(3);
         }
+        char *IV = malloc(mcrypt_enc_get_iv_size(mcrypt->td));
+        for (int i=0; i< mcrypt_enc_get_iv_size( mcrypt->td ); i++) {
+            IV[i]=rand();
+        }
         mcrypt->blocksize = mcrypt_enc_get_block_size(mcrypt->td);
-        mcrypt_generic_init(mcrypt->td, key, sizeof(*key), NULL);
+        logging("init_mcrypt", "mcrypt init, key:%s len:%d", key, strlen(key));
+        int ret = mcrypt_generic_init(mcrypt->td, key, strlen(key), NULL);
+        if (ret<0) {
+            mcrypt_perror(ret);
+            exit(3);
+        }
         mcrypt->enc_state_size = sizeof mcrypt->enc_state;
         mcrypt_enc_get_state(mcrypt->td, mcrypt->enc_state, &mcrypt->enc_state_size);
     }
@@ -317,6 +326,10 @@ void *dev2kcp(void *data)
                         mcrypt_generic(mcrypt.td, (void *)&alive_buff, alive_buff_len);
                         mcrypt_enc_set_state(mcrypt.td, mcrypt.enc_state, mcrypt.enc_state_size);
                     }
+                    if (mcrypt.td==MCRYPT_FAILED) {
+                        logging("notice", "crypt failed");
+                        continue;
+                    }
                     //logging("warning", "alive_buff: %p", &alive_buff);
                     ikcp_send(kcps->kcp, alive_buff, alive_buff_len);
                     sleep_times=0;
@@ -375,6 +388,10 @@ void *kcp2dev(void *data)
         {
             mdecrypt_generic(mcrypt.td, (void *)&buff, cnt);
             mcrypt_enc_set_state(mcrypt.td, mcrypt.enc_state, mcrypt.enc_state_size);
+        }
+        if (mcrypt.td==MCRYPT_FAILED) {
+            logging("notice", "decrypt failed");
+            continue;
         }
         memcpy(&total_frms, (void *)&buff, 2);
         if (total_frms<=0 || total_frms>7) {

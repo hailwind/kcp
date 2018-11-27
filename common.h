@@ -29,7 +29,7 @@
 #define SERVER_IP "192.168.10.11"
 #define SERVER_PORT 8888
 
-#define ENABLED_LOG {"notice", "warning", "handle", "init_tap", "read_fifo", "manage_conn"}
+#define ENABLED_LOG {"notice", "warning", "handle", "init_tap", "init_mcrypt", "read_fifo"}
 
 //#define DEFAULT_ALLOWED_CONV "28445"
 
