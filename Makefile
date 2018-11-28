@@ -29,14 +29,14 @@ rbtree.o:
 	$(CC) -g -rdynamic -c rbtree.c -o bin/rbtree.o
 
 deb:
-	mkdir -p chroot/opt/svpn
+	mkdir -p chroot/opt/sedge/vpn
 	mkdir -p chroot/DEBIAN
-	cp bin/server chroot/opt/svpn/
-	cp bin/client chroot/opt/svpn/
-	chmod +xs chroot/opt/svpn/client
-	chmod +xs chroot/opt/svpn/server
+	cp bin/server chroot/opt/sedge/vpn
+	cp bin/client chroot/opt/sedge/vpn
+	chmod +xs chroot/opt/sedge/vpn/client
+	chmod +xs chroot/opt/sedge/vpn/server
 	cp control chroot/DEBIAN/
-	dpkg -b chroot svpn-0.1.0_all.deb
+	dpkg -b chroot sedge-vpn-0.1.0_amd64.deb
 	rm -rf chroot
 
 rmo:

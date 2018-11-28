@@ -1,5 +1,5 @@
-package: svpn
+package: sedge-vpn
 version: 0.1.0
-architecture: all
+architecture: amd64
 maintainer: syscloud
-description: kcp l2 vpn
+description: sedge(smart edge os) vpn
