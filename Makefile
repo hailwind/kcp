@@ -30,6 +30,7 @@ rbtree.o:
 
 deb:
 	mkdir -p chroot/opt/sedge/vpn
+	mkdir -p chroot/var/log/sedge
 	mkdir -p chroot/DEBIAN
 	cp bin/server chroot/opt/sedge/vpn
 	cp bin/client chroot/opt/sedge/vpn
