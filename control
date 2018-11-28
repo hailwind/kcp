@@ -1,0 +1,5 @@
+package: svpn
+version: 0.1.0
+architecture: all
+maintainer: syscloud
+description: kcp l2 vpn

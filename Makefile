@@ -28,6 +28,17 @@ ikcp.o:
 rbtree.o:
 	$(CC) -g -rdynamic -c rbtree.c -o bin/rbtree.o
 
+deb:
+	mkdir -p chroot/opt/svpn
+	mkdir -p chroot/DEBIAN
+	cp bin/server chroot/opt/svpn/
+	cp bin/client chroot/opt/svpn/
+	chmod +xs chroot/opt/svpn/client
+	chmod +xs chroot/opt/svpn/server
+	cp control chroot/DEBIAN/
+	dpkg -b chroot svpn-0.1.0_all.deb
+	rm -rf chroot
+
 rmo:
 	rm bin/*.o
 
