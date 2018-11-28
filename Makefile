@@ -34,8 +34,8 @@ deb:
 	mkdir -p chroot/DEBIAN
 	cp bin/server chroot/opt/sedge/vpn
 	cp bin/client chroot/opt/sedge/vpn
-	chmod +xs chroot/opt/sedge/vpn/client
-	chmod +xs chroot/opt/sedge/vpn/server
+	chmod +x chroot/opt/sedge/vpn/client
+	chmod +x chroot/opt/sedge/vpn/server
 	cp control chroot/DEBIAN/
 	dpkg -b chroot sedge-vpn-0.1.0_amd64.deb
 	rm -rf chroot
