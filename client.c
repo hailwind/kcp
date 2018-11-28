@@ -56,7 +56,7 @@ int main(int argc, char *argv[])
     char * server_addr;
     char * key;
     int server_port = SERVER_PORT;
-    int conv=-1;
+    int conv=0;
     int opt=0;
     while((opt=getopt_long(argc,argv,"s:p:c:h",long_option,NULL))!=-1)
     {
@@ -85,8 +85,7 @@ int main(int argc, char *argv[])
                 print_help(); break;
         }
     }
-    
-    if (!server_addr || conv==-1 || !key || strlen(key)<16)
+    if (!server_addr || conv==0 || !key || strlen(key)<16)
     {
         print_help();
     }

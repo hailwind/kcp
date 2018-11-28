@@ -47,8 +47,7 @@ void create_pid(char * role, int id) {
     sprintf(buff, "%d", id);
     strcat(f_name, buff);
     strcat(f_name, ".pid");
-    pid_fd=fopen(f_name, "wt");
-    if (pid_fd < 0) {
+    if((pid_fd=fopen(f_name,"wt+"))==NULL){
         logging("notice", "create pid file: %s fd: %d failed.", f_name, pid_fd);
         exit(1);
     }
@@ -125,7 +124,7 @@ void init_mcrypt(struct mcrypt_st *mcrypt, char *key)
 
 int init_tap(uint32_t conv)
 {
-    int dev;
+    int dev, err;
     char tun_device[] = "/dev/net/tun";
     char devname[20];
     sprintf(devname, "tap%d", conv);
@@ -139,8 +138,7 @@ int init_tap(uint32_t conv)
     memset(&ifr, 0, sizeof(ifr));
     ifr.ifr_flags = IFF_TAP | IFF_NO_PI;
     strncpy(ifr.ifr_name, devname, IFNAMSIZ);
-    if (ioctl(dev, TUNSETIFF, (void *)&ifr) < 0)
-    {
+    if ((err = ioctl(dev, TUNSETIFF, (void *) &ifr)) < 0) {
         logging("init_tap", "ioctl(TUNSETIFF) failed");
         exit(3);
     }
