@@ -34,21 +34,18 @@ void init_logging() {
     }
 }
 
-void create_pid(char * role, int conv) {
+void create_pid(char * role, int id) {
     int pid = getpid();
     FILE *pid_fd;
     char f_name[256];
     memset(f_name, '\0', 256);
-    
+    char buff[10];
+    memset(buff, '\0', 10);
     strcat(f_name, "/var/run/");
     strcat(f_name, role);
-    if (strcmp(role, "client")==0) {
-        strcat(f_name, "_");
-        char buff[10];
-        memset(buff, '\0', 10);
-        sprintf(buff, "%d", conv);
-        strcat(f_name, buff);
-    }
+    strcat(f_name, "_");
+    sprintf(buff, "%d", id);
+    strcat(f_name, buff);
     strcat(f_name, ".pid");
     pid_fd=fopen(f_name, "wt");
     if (pid_fd < 0) {

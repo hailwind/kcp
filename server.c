@@ -268,7 +268,7 @@ int main(int argc, char *argv[])
     }
     set_server();
     srand(time(NULL));
-    create_pid("server", 0);
+    create_pid("server", server_port);
     int sock_fd = listening(bind_addr, server_port);
     int fifo_fd = open_fifo(server_port, 'R');
     handle(sock_fd, fifo_fd);
