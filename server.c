@@ -70,7 +70,7 @@ void set_conv_dead(struct connection_map_st *conn_map, char *conv) {
         if (kcps->dev_fd>0) close(kcps->dev_fd);
         if (kcps->kcp) ikcp_release(kcps->kcp);
         map_delete(&conn_map->conv_session_map, node);
-        free(kcps);
+//        free(kcps);
     }
 }
 
