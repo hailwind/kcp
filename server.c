@@ -162,6 +162,7 @@ void read_fifo(struct connection_map_st *conn_map) {
 
 void send_fifo(int fifo_fd, char *cmd, char *conv, char *key) {
     char buf[128];
+    memset(buf, '\0', 128);
     strcat(buf, cmd);
     strcat(buf, conv);
     if(key && strlen(key)>=16 && strlen(key)<=32) {
