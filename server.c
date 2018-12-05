@@ -4,7 +4,13 @@
 #define FIFO "/var/run/fifo"
 
 void print_help() {
-    printf("server [--bind=0.0.0.0] [--port=8888] [--no-crypt] --crypt-key=0123456789012345678901234567890 [--crypt-algo=twofish] [--crypt-mode=cbc] [--mode=3] [--add=38837] [--del=38837] [--debug]\n");
+    printf("\
+//start a server process.\n\
+server [--bind=0.0.0.0] [--port=8888] [--mode=3] [--no-crypt]  [--crypt-algo=twofish] [--crypt-mode=cbc] [--debug]\n\
+//add a conv to a server, identify the server by port. \n\
+server [--port=8888] --add-conv=38837 --crypt-key=0123456789012345678901234567890\n\
+//del a conv from a server, identify the server by port. \n\
+server [--port=8888] --del-conv=38837\n");
     exit(0);
 }
 
@@ -215,6 +221,8 @@ static const struct option long_option[]={
    {"mode",required_argument,NULL,'m'},
    {"del",required_argument,NULL,'X'},
    {"add",required_argument,NULL,'Y'},
+   {"del-conv",required_argument,NULL,'X'},
+   {"add-conv",required_argument,NULL,'Y'},
    {"debug",no_argument,NULL,'d'},
    {"help",no_argument,NULL,'h'},
    {NULL,0,NULL,0}
