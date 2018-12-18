@@ -34,6 +34,7 @@ static const struct option long_option[]={
    {"server",required_argument,NULL,'s'},
    {"port",required_argument,NULL,'p'},
    {"conv",required_argument,NULL,'c'},
+   {"with-lz4",no_argument,NULL,'Z'},
    {"no-crypt",no_argument,NULL,'C'},
    {"crypt-key",required_argument,NULL,'k'},
    {"crypt-algo",required_argument,NULL,'A'},
@@ -45,7 +46,7 @@ static const struct option long_option[]={
 };
 
 void print_help() {
-    printf("client --server=192.168.1.1 [--port=8888] --conv=28445 [--no-crypt] --crypt-key=0123456789012345678901234567890 [--crypt-algo=twofish] [--crypt-mode=cbc] [--mode=3] [--debug]\n");
+    printf("client --server=192.168.1.1 [--port=8888] --conv=28445 [--with-lz4] [--no-crypt] --crypt-key=0123456789012345678901234567890 [--crypt-algo=twofish] [--crypt-mode=cbc] [--mode=3] [--debug]\n");
     exit(0);
 }
 
@@ -69,6 +70,8 @@ int main(int argc, char *argv[])
                 server_port=atoi(optarg); break;
             case 'c': 
                 conv=atoi(optarg); break;
+            case 'Z':
+                set_lz4(); break;
             case 'C':
                 set_nocrypt(); break;
             case 'k':

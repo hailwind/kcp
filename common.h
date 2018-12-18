@@ -12,6 +12,7 @@
 #include <mcrypt.h>
 #include <netdb.h>
 #include <pthread.h>
+#include <lz4.h>
 
 #include <sys/time.h>
 #include <sys/wait.h>
@@ -102,6 +103,8 @@ void set_debug();
 void set_server();
 
 void set_mode(int arq_mode);
+
+void set_lz4();
 
 void set_nocrypt();
 

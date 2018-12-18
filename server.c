@@ -6,7 +6,7 @@
 void print_help() {
     printf("\
 //start a server process.\n\
-server [--bind=0.0.0.0] [--port=8888] [--mode=3] [--no-crypt]  [--crypt-algo=twofish] [--crypt-mode=cbc] [--debug]\n\
+server [--bind=0.0.0.0] [--port=8888] [--mode=3] [--with-lz4] [--no-crypt]  [--crypt-algo=twofish] [--crypt-mode=cbc] [--debug]\n\
 //add a conv to a server, identify the server by port. \n\
 server [--port=8888] --add-conv=38837 --crypt-key=0123456789012345678901234567890\n\
 //del a conv from a server, identify the server by port. \n\
@@ -215,6 +215,7 @@ void handle(int sock_fd, int fifo_fd)
 static const struct option long_option[]={
    {"bind",required_argument,NULL,'b'},
    {"port",required_argument,NULL,'p'},
+   {"with-lz4",no_argument,NULL,'Z'},
    {"no-crypt",no_argument,NULL,'C'},
    {"crypt-key",required_argument,NULL,'k'},
    {"crypt-algo",required_argument,NULL,'A'},
@@ -248,6 +249,8 @@ int main(int argc, char *argv[])
                 bind_addr=optarg; break;
             case 'p': 
                 server_port=atoi(optarg); break;
+            case 'Z':
+                set_lz4(); break;
             case 'C':
                 set_nocrypt(); break;
             case 'k':

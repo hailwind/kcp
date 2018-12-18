@@ -2,10 +2,10 @@ CC = gcc
 all: server client testing rmo
 
 server: common.o server.o
-	$(CC) -g -rdynamic -lmcrypt -lpthread bin/server.o bin/common.o bin/ikcp.o bin/rbtree.o -o bin/server
+	$(CC) -g -rdynamic -lmcrypt -llz4 -lpthread bin/server.o bin/common.o bin/ikcp.o bin/rbtree.o -o bin/server
 
 client: common.o client.o
-	$(CC) -g -rdynamic -lmcrypt -lpthread bin/client.o bin/common.o bin/ikcp.o bin/rbtree.o -o bin/client
+	$(CC) -g -rdynamic -lmcrypt -llz4 -lpthread bin/client.o bin/common.o bin/ikcp.o bin/rbtree.o -o bin/client
 
 testing: rbtree.o testing.o
 	$(CC) -g -rdynamic -lmcrypt -lpthread bin/testing.o bin/rbtree.o -o bin/testing

@@ -2,6 +2,7 @@
 
 static int DEBUG=0;
 static int role=0;
+static int lz4 = 0;
 static int crypt=1;
 static char * crypt_algo = MCRYPT_TWOFISH;
 static char * crypt_mode = MCRYPT_CBC;
@@ -61,6 +62,10 @@ void set_debug(){
 
 void set_mode(int arq_mode) {
     mode = arq_mode;
+}
+
+void set_lz4() {
+    lz4 = 1;
 }
 
 void set_nocrypt() {
@@ -288,7 +293,8 @@ void *dev2kcp(void *data)
     int read_times=0;
     uint16_t total_frms=0;
     uint16_t total_len=16;
-    char *alive_buff="  ALIVE";
+    char alive_buff_arr[16] = "  ALIVE";
+    char *alive_buff=alive_buff_arr;
     int alive_buff_len=strlen(alive_buff);
     /*
     0,1 int16 总帧数
@@ -322,7 +328,7 @@ void *dev2kcp(void *data)
         if (read_times>=5 || (cnt>0 && cnt<(MTU-24))) {
             memcpy(buff, &total_frms, 2);
             logging("dev2kcp", "dev2kcp-1 %ld",timstamp());
-            if (mcrypt.blocksize)
+            if (crypt && mcrypt.blocksize)
             {
                 //cnt = ((cnt - 1) / mcrypt.blocksize + 1) * mcrypt.blocksize; // pad to block size
                 mcrypt_generic(mcrypt.td, buff, total_len);
@@ -346,8 +352,8 @@ void *dev2kcp(void *data)
             if (read_times==0) {
                 if (sleep_times>5000) {
                     uint16_t zero_frms = 0;
-                    memcpy(&alive_buff, &zero_frms, 2);
-                    if (mcrypt.blocksize)
+                    memcpy(alive_buff, &zero_frms, 2);
+                    if (crypt && mcrypt.blocksize)
                     {
                         //cnt = ((cnt - 1) / mcrypt.blocksize + 1) * mcrypt.blocksize; // pad to block size
                         mcrypt_generic(mcrypt.td, alive_buff, alive_buff_len);
@@ -416,7 +422,7 @@ void *kcp2dev(void *data)
 
 
         logging("kcp2dev", "recv data from kcp: %d", cnt);
-        if (mcrypt.blocksize)
+        if (crypt && mcrypt.blocksize)
         {
             mdecrypt_generic(mcrypt.td, buff, cnt);
             mcrypt_enc_set_state(mcrypt.td, mcrypt.enc_state, mcrypt.enc_state_size);
