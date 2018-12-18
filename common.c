@@ -286,6 +286,8 @@ void *dev2kcp(void *data)
 {
     char buff_arr[RCV_BUFF_LEN];
     char *buff = buff_arr;
+    char lz4_buff_arr[RCV_BUFF_LEN];
+    char *lz4_buff = lz4_buff_arr;
     struct kcpsess_st *kcps = (struct kcpsess_st *)data;
     struct mcrypt_st mcrypt;
     init_mcrypt(&mcrypt, kcps->key);
@@ -328,6 +330,10 @@ void *dev2kcp(void *data)
         if (read_times>=5 || (cnt>0 && cnt<(MTU-24))) {
             memcpy(buff, &total_frms, 2);
             logging("dev2kcp", "dev2kcp-1 %ld",timstamp());
+            if (lz4) {
+                total_len = LZ4_compress_default(buff, lz4_buff, total_len, RCV_BUFF_LEN);
+                buff = lz4_buff_arr;
+            }
             if (crypt && mcrypt.blocksize)
             {
                 //cnt = ((cnt - 1) / mcrypt.blocksize + 1) * mcrypt.blocksize; // pad to block size
@@ -346,6 +352,7 @@ void *dev2kcp(void *data)
             total_frms=0;
             total_len=16;
             read_times=0;
+            buff = buff_arr;
             continue;
         }
         if (cnt < 0) {
@@ -389,6 +396,8 @@ void *kcp2dev(void *data)
 {
     char buff_arr[RCV_BUFF_LEN];
     char *buff = buff_arr;
+    char lz4_buff_arr[RCV_BUFF_LEN];
+    char *lz4_buff = lz4_buff_arr;
     struct kcpsess_st *kcps = (struct kcpsess_st *)data;
     struct mcrypt_st mcrypt;
     init_mcrypt(&mcrypt, kcps->key);
@@ -431,6 +440,10 @@ void *kcp2dev(void *data)
                 continue;
             }
         }
+        if (lz4) {
+            cnt = LZ4_decompress_safe(buff, lz4_buff, cnt, RCV_BUFF_LEN);
+            buff = lz4_buff_arr;
+        }
         memcpy(&total_frms, buff, 2);
         if (total_frms<=0 || total_frms>7) {
             logging("kcp2dev", "alive frame or illegal data, r_addr: %s len: %d content: %s", inet_ntoa(kcps->dst.sin_addr), cnt, buff+2);
@@ -446,6 +459,7 @@ void *kcp2dev(void *data)
             total_len+=frm_size;
         }
         total_len=16;
+        buff = buff_arr;
         logging("kcp2dev", "kcp2dev-2 %ld",timstamp());
     }
     mcrypt_generic_deinit(mcrypt.td);
