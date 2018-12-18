@@ -197,17 +197,18 @@ void init_kcp(struct kcpsess_st *ps)
 
 void *udp2kcp_client(void *data)
 {
-    char buff[RCV_BUFF_LEN];
+    char buff_arr[RCV_BUFF_LEN];
+    char *buff = buff_arr;
     struct kcpsess_st *kcps = (struct kcpsess_st *)data;
     while (1)
     {
-        int cnt = recvfrom(kcps->sock_fd, &buff, RCV_BUFF_LEN, 0, (struct sockaddr *)&kcps->dst, &(kcps->dst_len));
+        int cnt = recvfrom(kcps->sock_fd, buff, RCV_BUFF_LEN, 0, (struct sockaddr *)&kcps->dst, &(kcps->dst_len));
         if (cnt < 0)
         {
             continue;
         }
         logging("udp2kcp_client", "udp2kcp-1 %ld",timstamp());
-        uint32_t sess_id = get_session(&buff, cnt);
+        uint32_t sess_id = get_session(buff, cnt);
         cnt-=4;
         if (kcps->sess_id==0) {
             kcps->sess_id = sess_id;
@@ -229,27 +230,28 @@ void *udp2kcp_client(void *data)
 
 void *udp2kcp_server(void *data)
 {
-    char buff[RCV_BUFF_LEN];
+    char buff_arr[RCV_BUFF_LEN];
+    char *buff = buff_arr;
     struct connection_map_st *conn_map = (struct connection_map_st *)data;
     struct sockaddr_in client;
     socklen_t client_len = sizeof(client);
     struct kcpsess_st * kcps;
     while (1)
     {
-        int cnt = recvfrom(conn_map->sock_fd, &buff, RCV_BUFF_LEN, 0, (struct sockaddr *)&client, &client_len);
+        int cnt = recvfrom(conn_map->sock_fd, buff, RCV_BUFF_LEN, 0, (struct sockaddr *)&client, &client_len);
         if (cnt < (24+4))//24(KCP) 4(SESS)
         {
             continue;
         }
         logging("udp2kcp_server", "udp2kcp-1 %ld",timstamp());
-        uint32_t conv = get_conv(&buff);
+        uint32_t conv = get_conv(buff);
         char conv_str[20];
         sprintf(conv_str, "%d", conv);
         logging("udp2kcp_server", "udp2kcp-x %d", conv);
 
         map_t *node = map_get(&conn_map->conv_session_map, conv_str);
         if (node && node->val) {
-            uint32_t sess_id = get_session(&buff, cnt);
+            uint32_t sess_id = get_session(buff, cnt);
             cnt-=4;
             kcps = (struct kcpsess_st * )node->val;
             if (sess_id==0 || !kcps->kcp) {
@@ -277,7 +279,8 @@ void *udp2kcp_server(void *data)
 
 void *dev2kcp(void *data)
 {
-    char buff[RCV_BUFF_LEN];
+    char buff_arr[RCV_BUFF_LEN];
+    char *buff = buff_arr;
     struct kcpsess_st *kcps = (struct kcpsess_st *)data;
     struct mcrypt_st mcrypt;
     init_mcrypt(&mcrypt, kcps->key);
@@ -285,6 +288,8 @@ void *dev2kcp(void *data)
     int read_times=0;
     uint16_t total_frms=0;
     uint16_t total_len=16;
+    char *alive_buff="  ALIVE";
+    int alive_buff_len=strlen(alive_buff);
     /*
     0,1 int16 总帧数
     2,3 int16 帧1的长度
@@ -305,22 +310,22 @@ void *dev2kcp(void *data)
                 init_kcp((struct kcpsess_st *)data);
             }
         }
-        int cnt = read(kcps->dev_fd, (void *)buff+total_len, 1514);
+        int cnt = read(kcps->dev_fd, buff+total_len, 1514);
         if (cnt>0) {
             logging("dev2kcp", "read data from tap, position: %d, size: %d, read_times: %d", total_len, cnt, read_times);
             total_frms++;
             total_len+=cnt;
-            memcpy((void *)&buff+total_frms*2, &cnt, 2);
+            memcpy(buff+total_frms*2, &cnt, 2);
             uint16_t z;
-            memcpy(&z, (void *)&buff+total_frms*2, 2);
+            memcpy(&z, buff+total_frms*2, 2);
         }
         if (read_times>=5 || (cnt>0 && cnt<(MTU-24))) {
-            memcpy((void *)&buff, &total_frms, 2);
+            memcpy(buff, &total_frms, 2);
             logging("dev2kcp", "dev2kcp-1 %ld",timstamp());
             if (mcrypt.blocksize)
             {
                 //cnt = ((cnt - 1) / mcrypt.blocksize + 1) * mcrypt.blocksize; // pad to block size
-                mcrypt_generic(mcrypt.td, (void *)&buff, total_len);
+                mcrypt_generic(mcrypt.td, buff, total_len);
                 mcrypt_enc_set_state(mcrypt.td, mcrypt.enc_state, mcrypt.enc_state_size);
                 if (mcrypt.td==MCRYPT_FAILED) {
                     logging("notice", "crypt failed");
@@ -340,14 +345,12 @@ void *dev2kcp(void *data)
         if (cnt < 0) {
             if (read_times==0) {
                 if (sleep_times>5000) {
-                    char alive_buff[16]="  ALIVE";
-                    int alive_buff_len=16;
                     uint16_t zero_frms = 0;
-                    memcpy((void *)&alive_buff, &zero_frms, 2);
+                    memcpy(&alive_buff, &zero_frms, 2);
                     if (mcrypt.blocksize)
                     {
                         //cnt = ((cnt - 1) / mcrypt.blocksize + 1) * mcrypt.blocksize; // pad to block size
-                        mcrypt_generic(mcrypt.td, (void *)&alive_buff, alive_buff_len);
+                        mcrypt_generic(mcrypt.td, alive_buff, alive_buff_len);
                         mcrypt_enc_set_state(mcrypt.td, mcrypt.enc_state, mcrypt.enc_state_size);
                         if (mcrypt.td==MCRYPT_FAILED) {
                             logging("notice", "crypt failed");
@@ -355,7 +358,9 @@ void *dev2kcp(void *data)
                         }
                     }
                     //logging("warning", "alive_buff: %p", &alive_buff);
+                    pthread_mutex_lock(&kcps->ikcp_mutex);
                     ikcp_send(kcps->kcp, alive_buff, alive_buff_len);
+                    pthread_mutex_unlock(&kcps->ikcp_mutex);
                     sleep_times=0;
                 }
                 sleep_times++;
@@ -376,7 +381,8 @@ void *dev2kcp(void *data)
 
 void *kcp2dev(void *data)
 {
-    char buff[RCV_BUFF_LEN];
+    char buff_arr[RCV_BUFF_LEN];
+    char *buff = buff_arr;
     struct kcpsess_st *kcps = (struct kcpsess_st *)data;
     struct mcrypt_st mcrypt;
     init_mcrypt(&mcrypt, kcps->key);
@@ -412,23 +418,23 @@ void *kcp2dev(void *data)
         logging("kcp2dev", "recv data from kcp: %d", cnt);
         if (mcrypt.blocksize)
         {
-            mdecrypt_generic(mcrypt.td, (void *)&buff, cnt);
+            mdecrypt_generic(mcrypt.td, buff, cnt);
             mcrypt_enc_set_state(mcrypt.td, mcrypt.enc_state, mcrypt.enc_state_size);
             if (mcrypt.td==MCRYPT_FAILED) {
                 logging("notice", "decrypt failed");
                 continue;
             }
         }
-        memcpy(&total_frms, (void *)&buff, 2);
+        memcpy(&total_frms, buff, 2);
         if (total_frms<=0 || total_frms>7) {
-            logging("kcp2dev", "alive frame or illegal data, r_addr: %s len: %d content: %s", inet_ntoa(kcps->dst.sin_addr), cnt, (void *)&buff+2);
+            logging("kcp2dev", "alive frame or illegal data, r_addr: %s len: %d content: %s", inet_ntoa(kcps->dst.sin_addr), cnt, buff+2);
             //alive OR illegal
             continue;
         }
         uint16_t frm_size;
         for (int i=0;i<total_frms;i++) {
             //logging("kcp2dev", "frm_size: %p, buff: %p x:%p\n", &frm_size, &buff+(i+1)*2);
-            memcpy(&frm_size, (void *)&buff+(i+1)*2, 2);
+            memcpy(&frm_size, buff+(i+1)*2, 2);
             int y = write(kcps->dev_fd, buff+total_len, frm_size);
             logging("kcp2dev", "write to dev: idx: %d, position: %d, size: %d, wrote: %d", i, total_len, frm_size, y);
             total_len+=frm_size;
