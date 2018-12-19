@@ -131,7 +131,8 @@ void read_fifo(struct connection_map_st *conn_map) {
         //logging("read_fifo", "read fifo: %s, %d bytes", buf, count);
         conv = (void *)&buf+3;
         if (count>7) {
-            for (int i=3;i<count;i++) {
+            int i=3;
+            for (i=3;i<count;i++) {
                 if (buf[i]=='&') {
                     buf[i]='\0';
                     key = (void *)&buf + i +1;
