@@ -28,7 +28,8 @@ void logging(char const *name, char const *message, ...)
 
 void init_logging() {
     char arr[20][15] = ENABLED_LOG;
-    for (int i=0;i<20;i++) {
+    int i=0;
+    for (i=0;i<20;i++) {
         if (arr[i][0]!='\0') {
             map_put(&enabled_log, arr[i], NULL);
         }
@@ -112,7 +113,8 @@ void init_mcrypt(struct mcrypt_st *mcrypt, char *key)
             exit(3);
         }
         char *IV = malloc(mcrypt_enc_get_iv_size(mcrypt->td));
-        for (int i=0; i< mcrypt_enc_get_iv_size( mcrypt->td ); i++) {
+        int i=0;
+        for (i=0; i< mcrypt_enc_get_iv_size( mcrypt->td ); i++) {
             IV[i]=rand();
         }
         mcrypt->blocksize = mcrypt_enc_get_block_size(mcrypt->td);
@@ -451,7 +453,8 @@ void *kcp2dev(void *data)
             continue;
         }
         uint16_t frm_size;
-        for (int i=0;i<total_frms;i++) {
+        int i=0;
+        for (i=0;i<total_frms;i++) {
             //logging("kcp2dev", "frm_size: %p, buff: %p x:%p\n", &frm_size, &buff+(i+1)*2);
             memcpy(&frm_size, buff+(i+1)*2, 2);
             int y = write(kcps->dev_fd, buff+total_len, frm_size);
