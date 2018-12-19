@@ -45,7 +45,7 @@ struct kcpsess_st * init_kcpsess(struct connection_map_st *conn_map,
 {
     int dev_fd = init_tap(conv);
     struct kcpsess_st *ps = (struct kcpsess_st *)malloc(sizeof(struct kcpsess_st));
-    ps->sock_fd = conn_map->sock_fd;
+    ps->sock_fd = -1;
     ps->dev_fd = dev_fd;
     ps->conv = conv;
     ps->kcp = NULL;
@@ -181,7 +181,7 @@ void send_fifo(int fifo_fd, char *cmd, char *conv, char *key) {
     exit(0);
 }
 
-void manage_conn(struct connection_map_st *conn_m) {
+void wait_conv(struct connection_map_st *conn_m) {
     while (1)
     {
         read_fifo(conn_m);
@@ -189,28 +189,12 @@ void manage_conn(struct connection_map_st *conn_m) {
     }
 }
 
-void handle(int sock_fd, int fifo_fd)
+void handle(struct server_listen_st *server)
 {
-    struct connection_map_st conn_map;
-    conn_map.sock_fd = sock_fd;
-    conn_map.fifo_fd = fifo_fd;
-    conn_map.conv_session_map = RB_ROOT;
-
-    #ifdef DEFAULT_ALLOWED_CONV
-    map_put(&conn_map.conv_session_map, DEFAULT_ALLOWED_CONV, NULL);
-    #endif
-
-    pthread_t udp2kcpt, updateloopt;
-
-    pthread_create(&udp2kcpt, NULL, udp2kcp_server, (void *)&conn_map);
+    pthread_t udp2kcpt;
+    pthread_create(&udp2kcpt, NULL, udp2kcp_server, (void *)server);
     pthread_detach(udp2kcpt);
     logging("handle", "create udp2kcp_server thread: %ld", udp2kcpt);
-
-    pthread_create(&updateloopt, NULL, kcpupdate_server, (void *)&conn_map);
-    pthread_detach(updateloopt);
-    logging("handle", "create kcpupdate_server thread: %ld", updateloopt);
-
-    manage_conn(&conn_map);
 }
 
 static const struct option long_option[]={
@@ -282,10 +266,34 @@ int main(int argc, char *argv[])
     set_server();
     srand(time(NULL));
     create_pid("server", server_port);
-    int sock_fd = listening(bind_addr, server_port);
     int fifo_fd = open_fifo(server_port, 'R');
-    handle(sock_fd, fifo_fd);
+
+    struct connection_map_st conn_map;
+    conn_map.fifo_fd = fifo_fd;
+    conn_map.conv_session_map = RB_ROOT;
+    #ifdef DEFAULT_ALLOWED_CONV
+    map_put(&conn_map.conv_session_map, DEFAULT_ALLOWED_CONV, NULL);
+    #endif
+
+    char *mPtr = NULL;
+    mPtr = strtok(bind_addr, ",");
+    while (mPtr != NULL)
+    {
+        int sock_fd = listening(mPtr, server_port);
+        struct server_listen_st *server = malloc(sizeof(struct server_listen_st));
+        server->sock_fd = sock_fd;
+        server->conn_map = &conn_map;
+        handle(server);
+        mPtr = strtok(NULL, "*");
+    }
+
+    pthread_t updateloopt;
+    pthread_create(&updateloopt, NULL, kcpupdate_server, (void *)&conn_map);
+    pthread_detach(updateloopt);
+    logging("handle", "create kcpupdate_server thread: %ld", updateloopt);
+    wait_conv(&conn_map);
+
     logging("server", "close");
-    close(sock_fd);
+    //close(sock_fd);
     return 0;
 }

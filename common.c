@@ -239,13 +239,13 @@ void *udp2kcp_server(void *data)
 {
     char buff_arr[RCV_BUFF_LEN];
     char *buff = buff_arr;
-    struct connection_map_st *conn_map = (struct connection_map_st *)data;
+    struct server_listen_st *server = (struct server_listen_st *)data;
     struct sockaddr_in client;
     socklen_t client_len = sizeof(client);
     struct kcpsess_st * kcps;
     while (1)
     {
-        int cnt = recvfrom(conn_map->sock_fd, buff, RCV_BUFF_LEN, 0, (struct sockaddr *)&client, &client_len);
+        int cnt = recvfrom(server->sock_fd, buff, RCV_BUFF_LEN, 0, (struct sockaddr *)&client, &client_len);
         if (cnt < (24+4))//24(KCP) 4(SESS)
         {
             continue;
@@ -256,7 +256,7 @@ void *udp2kcp_server(void *data)
         sprintf(conv_str, "%d", conv);
         logging("udp2kcp_server", "udp2kcp-x %d", conv);
 
-        map_t *node = map_get(&conn_map->conv_session_map, conv_str);
+        map_t *node = map_get(&server->conn_map->conv_session_map, conv_str);
         if (node && node->val) {
             uint32_t sess_id = get_session(buff, cnt);
             cnt-=4;
@@ -275,7 +275,9 @@ void *udp2kcp_server(void *data)
             logging("udp2kcp_server", "CONV NOT EXISTS or NOT INIT COMPLETED %s", conv_str);
             continue;
         }
-
+        if (kcps->sock_fd==-1) {
+            kcps->sock_fd = server->sock_fd;
+        }
         logging("udp2kcp_server", "recvfrom udp packet: %d addr: %s sess_id: %d, kcps: %p, kcp: %p", cnt, inet_ntoa(kcps->dst.sin_addr), kcps->sess_id, kcps, kcps->kcp);
         pthread_mutex_lock(&kcps->ikcp_mutex);
         int ret = ikcp_input(kcps->kcp, buff, cnt);
@@ -472,9 +474,13 @@ void *kcp2dev(void *data)
 
 int udp_output(const char *buf, int len, ikcpcb *kcp, void *user)
 {
+
     logging("udp_output", "udp_output-1 %ld",timstamp());
     logging("udp_output", "length %d", len);
     struct kcpsess_st *kcps = (struct kcpsess_st *)user;
+    if (kcps->sock_fd==-1) {
+        return 0;
+    }
     char *x;
     memcpy(&x, &buf, sizeof(buf)); // const 指针不能直接赋值给另外一个可变指针，所以用拷贝指针地址的方法创建一个新的临时指针．
     set_session(x, len, kcps->sess_id);

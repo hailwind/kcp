@@ -87,9 +87,14 @@ typedef struct kcpsess_st * kcpsess_pt;
 
 struct connection_map_st
 {
-	int sock_fd;
 	int fifo_fd;
 	root_t conv_session_map;    //k: conv, v: kcpsess_st
+};
+
+struct server_listen_st
+{
+	int sock_fd;
+	struct connection_map_st *conn_map;
 };
 
 void logging(char const *name, char const *message, ...);
