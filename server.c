@@ -284,7 +284,7 @@ int main(int argc, char *argv[])
         server->sock_fd = sock_fd;
         server->conn_map = &conn_map;
         handle(server);
-        mPtr = strtok(NULL, "*");
+        mPtr = strtok(NULL, ",");
     }
 
     pthread_t updateloopt;
