@@ -52,7 +52,9 @@ static map_t *map_get(root_t *root, const char *str) {
 
 static int map_put(root_t *root, const char* key, void* val) {
     map_t *data = (map_t*)malloc(sizeof(map_t));
-    data->key = (char*)malloc(sizeof(key));
+    bzero(data, sizeof(map_t));
+    data->key = (char*)malloc(strlen(key));
+    bzero(data->key, strlen(key));
     strcpy(data->key, key);
     data->val = val;
 

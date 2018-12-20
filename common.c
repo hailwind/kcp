@@ -10,11 +10,13 @@ static int mode = 3;
 
 static root_t enabled_log = RB_ROOT;
 
+static char timestr[20];
+
 void logging(char const *name, char const *message, ...)
 {
     if (DEBUG==1 || map_get(&enabled_log, name)) {
             time_t now = time(NULL);
-            char timestr[20];
+            bzero(timestr, 20);
             strftime(timestr, 20, "%Y-%m-%d %H:%M:%S", localtime(&now));
             printf("[%s] [%d] [%s] ", timestr, (long int)syscall(__NR_gettid), name);
             va_list argptr;
@@ -40,9 +42,9 @@ void create_pid(char * role, int id) {
     int pid = getpid();
     FILE *pid_fd;
     char f_name[256];
-    memset(f_name, '\0', 256);
+    bzero(f_name, 256);
     char buff[10];
-    memset(buff, '\0', 10);
+    bzero(buff, 10);
     strcat(f_name, "/var/run/");
     strcat(f_name, role);
     strcat(f_name, "_");
@@ -112,9 +114,11 @@ void init_mcrypt(struct mcrypt_st *mcrypt, char *key)
             logging("init_mcrypt", "mcrypt_module_open failed algo=%s mode=%s key=%s keysize=%d", crypt_algo, crypt_mode, key, sizeof(key));
             exit(3);
         }
-        char *IV = malloc(mcrypt_enc_get_iv_size(mcrypt->td));
+        int iv_size = mcrypt_enc_get_iv_size(mcrypt->td);
+        char *IV = malloc(iv_size);
+        bzero(IV, iv_size);
         int i=0;
-        for (i=0; i< mcrypt_enc_get_iv_size( mcrypt->td ); i++) {
+        for (i=0; i< iv_size; i++) {
             IV[i]=rand();
         }
         mcrypt->blocksize = mcrypt_enc_get_block_size(mcrypt->td);
@@ -134,17 +138,18 @@ int init_tap(uint32_t conv)
     int dev, err;
     char tun_device[] = "/dev/net/tun";
     char devname[20];
+    bzero(devname, 20);
     sprintf(devname, "tap%d", conv);
     logging("init_tap", "devname: %s", devname);
     struct ifreq ifr;
+    bzero(&ifr, sizeof(struct ifreq));
     if ((dev = open(tun_device, O_RDWR)) < 0)
     {
         logging("init_tap", "open(%s) failed: %s", tun_device, strerror(errno));
         exit(2);
     }
-    memset(&ifr, 0, sizeof(ifr));
     ifr.ifr_flags = IFF_TAP | IFF_NO_PI;
-    strncpy(ifr.ifr_name, devname, IFNAMSIZ);
+    strncpy(ifr.ifr_name, devname, strlen(devname));
     if ((err = ioctl(dev, TUNSETIFF, (void *) &ifr)) < 0) {
         logging("init_tap", "ioctl(TUNSETIFF) failed");
         exit(3);
@@ -241,8 +246,10 @@ void *udp2kcp_server(void *data)
     char *buff = buff_arr;
     struct server_listen_st *server = (struct server_listen_st *)data;
     struct sockaddr_in client;
+    bzero(&client, sizeof(struct sockaddr_in));
     socklen_t client_len = sizeof(client);
     struct kcpsess_st * kcps;
+    char conv_str[20];
     while (1)
     {
         int cnt = recvfrom(server->sock_fd, buff, RCV_BUFF_LEN, 0, (struct sockaddr *)&client, &client_len);
@@ -252,7 +259,7 @@ void *udp2kcp_server(void *data)
         }
         logging("udp2kcp_server", "udp2kcp-1 %ld",timstamp());
         uint32_t conv = get_conv(buff);
-        char conv_str[20];
+        bzero(conv_str, 20);
         sprintf(conv_str, "%d", conv);
         logging("udp2kcp_server", "udp2kcp-x %d", conv);
 
@@ -294,6 +301,7 @@ void *dev2kcp(void *data)
     char *lz4_buff = lz4_buff_arr;
     struct kcpsess_st *kcps = (struct kcpsess_st *)data;
     struct mcrypt_st mcrypt;
+    bzero(&mcrypt, sizeof(struct mcrypt_st));
     init_mcrypt(&mcrypt, kcps->key);
     int sleep_times=0;
     int read_times=0;
@@ -404,6 +412,7 @@ void *kcp2dev(void *data)
     char *lz4_buff = lz4_buff_arr;
     struct kcpsess_st *kcps = (struct kcpsess_st *)data;
     struct mcrypt_st mcrypt;
+    bzero(&mcrypt, sizeof(struct mcrypt_st));
     init_mcrypt(&mcrypt, kcps->key);
     int x = 0;
     uint16_t total_frms=0;

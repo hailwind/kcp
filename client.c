@@ -4,6 +4,7 @@
 void handle(int dev_fd, int sock_fd, int conv, struct sockaddr_in *dst, char *key)
 {
     struct kcpsess_st ps;
+    bzero(&ps, sizeof(struct kcpsess_st));
     ps.sock_fd = sock_fd;
     ps.dev_fd = dev_fd;
     ps.conv = conv;
@@ -11,7 +12,7 @@ void handle(int dev_fd, int sock_fd, int conv, struct sockaddr_in *dst, char *ke
     ps.dst_len = sizeof(ps.dst);
     ps.kcp=NULL;
     ps.dead=0;
-    strncpy(ps.key, key, sizeof(ps.key));
+    strncpy(ps.key, key, strlen(key));
     pthread_mutex_t ikcp_mutex = PTHREAD_MUTEX_INITIALIZER;
     ps.ikcp_mutex = ikcp_mutex;
 
@@ -105,7 +106,7 @@ int main(int argc, char *argv[])
         exit(EXIT_FAILURE);
     }
     struct sockaddr_in ser_addr;
-    memset(&ser_addr, 0, sizeof(ser_addr));
+    bzero(&ser_addr, sizeof(struct sockaddr_in));
     ser_addr.sin_family = AF_INET;
     ser_addr.sin_addr.s_addr = inet_addr(server_addr);
     ser_addr.sin_port = htons(server_port);

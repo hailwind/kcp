@@ -17,14 +17,13 @@ server [--port=8888] --del-conv=38837\n");
 static int listening(char *bind_addr, int port)
 {
     struct sockaddr_in server;
+    bzero(&server, sizeof(server));
     int server_fd = socket(AF_INET, SOCK_DGRAM, 0);
     if (server_fd < 0)
     {
         logging("listening", "create socket fail!");
         exit(EXIT_FAILURE);
     }
-
-    bzero(&server, sizeof(server));
     server.sin_family = AF_INET;
     server.sin_addr.s_addr = inet_addr(bind_addr);
     server.sin_port = htons(port);
@@ -45,6 +44,7 @@ struct kcpsess_st * init_kcpsess(struct connection_map_st *conn_map,
 {
     int dev_fd = init_tap(conv);
     struct kcpsess_st *ps = (struct kcpsess_st *)malloc(sizeof(struct kcpsess_st));
+    bzero(ps, sizeof(struct kcpsess_st));
     ps->sock_fd = -1;
     ps->dev_fd = dev_fd;
     ps->conv = conv;
@@ -53,7 +53,7 @@ struct kcpsess_st * init_kcpsess(struct connection_map_st *conn_map,
     ps->dev2kcpt = 0;
     ps->kcp2devt = 0;
     ps->dead = 0;
-    strncpy(ps->key, key, 32);
+    strncpy(ps->key, key, strlen(key));
     pthread_mutex_t ikcp_mutex = PTHREAD_MUTEX_INITIALIZER;
     ps->ikcp_mutex = ikcp_mutex;
     logging("init_kcpsess","kcps: %p", ps);
@@ -83,7 +83,7 @@ void set_conv_dead(struct connection_map_st *conn_map, char *conv) {
 int open_fifo(int port, char rw) {
     int fifo_fd;
     char fifo_file[50];
-    memset(&fifo_file, '\0', 50);
+    bzero(&fifo_file, 50);
     sprintf(fifo_file, "%s.%d", FIFO, port);
     //printf("%s\n", fifo_file);
     /*
@@ -123,7 +123,7 @@ void start_thread(struct kcpsess_st *kcps) {
 void read_fifo(struct connection_map_st *conn_map) {
     if (conn_map->fifo_fd>=0) {
         char buf[128];
-        memset(buf, '\0', 128);
+        bzero(&buf, 128);
         int count=read(conn_map->fifo_fd, buf, 127);
         char *conv;
         char *key;
@@ -163,7 +163,7 @@ void read_fifo(struct connection_map_st *conn_map) {
 
 void send_fifo(int fifo_fd, char *cmd, char *conv, char *key) {
     char buf[128];
-    memset(buf, '\0', 128);
+    bzero(&buf, 128);
     strcat(buf, cmd);
     strcat(buf, conv);
     if(key && strlen(key)>=16 && strlen(key)<=32) {
@@ -219,7 +219,8 @@ static const struct option long_option[]={
 int main(int argc, char *argv[])
 {
     init_logging();
-    char *bind_addr = "0.0.0.0";
+    char all_addr[20]="0.0.0.0";
+    char *bind_addr = all_addr;
     int server_port = SERVER_PORT;
     char *key = NULL;
     char *conv = NULL;
@@ -269,6 +270,7 @@ int main(int argc, char *argv[])
     int fifo_fd = open_fifo(server_port, 'R');
 
     struct connection_map_st conn_map;
+    bzero(&conn_map, sizeof(struct connection_map_st));
     conn_map.fifo_fd = fifo_fd;
     conn_map.conv_session_map = RB_ROOT;
     #ifdef DEFAULT_ALLOWED_CONV
@@ -281,6 +283,7 @@ int main(int argc, char *argv[])
     {
         int sock_fd = listening(mPtr, server_port);
         struct server_listen_st *server = malloc(sizeof(struct server_listen_st));
+        bzero(server, sizeof(struct server_listen_st));
         server->sock_fd = sock_fd;
         server->conn_map = &conn_map;
         handle(server);
