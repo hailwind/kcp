@@ -6,6 +6,7 @@
 #include <errno.h>
 #include <time.h>
 #include <fcntl.h>
+#include <signal.h>
 #include <ctype.h>
 #include <string.h>
 #include <unistd.h>
@@ -19,6 +20,7 @@
 #include <sys/types.h>
 #include <sys/ioctl.h>
 #include <sys/stat.h>
+#include <sys/resource.h>
 
 #include <linux/if.h>
 #include <linux/if_tun.h>
@@ -99,11 +101,19 @@ struct server_listen_st
 
 void logging(char const *name, char const *message, ...);
 
+void rlimit();
+
+void sig_handler(int signo);
+
+void reg_signo(int signo);
+
 void init_logging();
 
 void create_pid(char *role, int conv);
 
 void set_debug();
+
+void set_no_debug();
 
 void set_server();
 

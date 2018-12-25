@@ -55,6 +55,9 @@ void print_help() {
 int main(int argc, char *argv[])
 {
     init_logging();
+    rlimit();
+    reg_signo(SIGUSR1);
+    reg_signo(SIGUSR2);
     char * server_addr;
     char * key;
     int server_port = SERVER_PORT;

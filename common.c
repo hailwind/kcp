@@ -28,6 +28,36 @@ void logging(char const *name, char const *message, ...)
     }
 }
 
+void rlimit() {
+  struct rlimit nofile_rlmt;
+  nofile_rlmt.rlim_cur = nofile_rlmt.rlim_max = 8192;
+  int rv = setrlimit(RLIMIT_NOFILE, &nofile_rlmt);
+  if (rv != 0) {
+    printf("Failed to set nofile rlimit.\n");
+  }
+
+  struct rlimit core_rlmt;
+  core_rlmt.rlim_cur = core_rlmt.rlim_max = RLIM_INFINITY;
+  rv = setrlimit(RLIMIT_CORE, &core_rlmt);
+  if (rv != 0) {
+    printf("Failed to set core rlimit.\n");
+  }
+}
+
+void reg_signo(int signo) {
+  if (signal(signo, sig_handler) == SIG_ERR) {
+    printf("Failed to register signo %d.\n", signo);
+  }
+}
+
+void sig_handler(int signo)
+{
+  if (signo == SIGUSR2)
+    set_debug();
+  if (signo == SIGUSR1)
+    set_no_debug();
+}
+
 void init_logging() {
     char arr[20][15] = ENABLED_LOG;
     int i=0;
@@ -61,6 +91,10 @@ void create_pid(char * role, int id) {
 
 void set_debug(){
     DEBUG=1;
+}
+
+void set_no_debug(){
+    DEBUG=0;
 }
 
 void set_mode(int arq_mode) {
@@ -336,8 +370,8 @@ void *dev2kcp(void *data)
             total_frms++;
             total_len+=cnt;
             memcpy(buff+total_frms*2, &cnt, 2);
-            uint16_t z;
-            memcpy(&z, buff+total_frms*2, 2);
+            // uint16_t z;
+            // memcpy(&z, buff+total_frms*2, 2);
         }
         if (read_times>=5 || (cnt>0 && cnt<(MTU-24))) {
             memcpy(buff, &total_frms, 2);

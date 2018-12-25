@@ -219,6 +219,9 @@ static const struct option long_option[]={
 int main(int argc, char *argv[])
 {
     init_logging();
+    rlimit();
+    reg_signo(SIGUSR1);
+    reg_signo(SIGUSR2);
     char all_addr[20]="0.0.0.0";
     char *bind_addr = all_addr;
     int server_port = SERVER_PORT;
