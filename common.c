@@ -259,7 +259,7 @@ void *udp2kcp_client(void *data)
         if (kcps->sess_id==0) {
             kcps->sess_id = sess_id;
         }
-        if (kcps->sess_id!=sess_id) {
+        if (kcps->sess_id!=sess_id || !kcps->kcp) {
             logging("udp2kcp_client", "client reinit_kcp=========== sess_id: %d", sess_id);
             pthread_mutex_lock(&kcps->ikcp_mutex);
             init_kcp((struct kcpsess_st *)data);
@@ -270,7 +270,7 @@ void *udp2kcp_client(void *data)
         pthread_mutex_lock(&kcps->ikcp_mutex);
         ikcp_input(kcps->kcp, buff, cnt);
         pthread_mutex_unlock(&kcps->ikcp_mutex);
-        logging("udp2kcp_client", "udp2kcp-2 %ld",timstamp());
+        logging("udp2kcp_client", "udp2kcp-2 %ld, kcp->state: %d",timstamp(), kcps->kcp->state);
     }
 }
 
@@ -302,7 +302,7 @@ void *udp2kcp_server(void *data)
             uint32_t sess_id = get_session(buff, cnt);
             cnt-=4;
             kcps = (struct kcpsess_st * )node->val;
-            if (sess_id==0 || !kcps->kcp) {
+            if (sess_id==0 || !kcps->kcp || kcps->kcp->state==-1) {
                 logging("udp2kcp_server", "server reinit_kcp sess_id: %d, kcps: %p, kcp: %p", sess_id, kcps, kcps->kcp);
                 pthread_mutex_lock(&kcps->ikcp_mutex);
                 memcpy(&kcps->dst, &client, client_len);
@@ -356,12 +356,13 @@ void *dev2kcp(void *data)
     */
     while (kcps->dead==0)
     {
-        if (!kcps->kcp) {
+        if (!kcps->kcp || kcps->kcp->state==-1) {
             if (role==1) {//server
                 isleep(1);
                 continue;
             }else{
-                init_kcp((struct kcpsess_st *)data);
+                logging("warning", "kcp not exists or kcp->state is -1, init kcp.");
+                init_kcp(kcps);
             }
         }
         int cnt = read(kcps->dev_fd, buff+total_len, 1514);
