@@ -32,9 +32,7 @@
 #define SERVER_IP "192.168.10.11"
 #define SERVER_PORT 8888
 
-#define ENABLED_LOG {"notice", "warning", "handle", "init_tap", "init_mcrypt", "read_fifo"}
-
-//#define DEFAULT_ALLOWED_CONV "28445"
+#define ENABLED_LOG {"notice", "warning", "handle", "init_tap", "init_mcrypt"}
 
 //IKCP PARAMETERS DEFINE
 //int nodelay, int interval, int resend, int nc
@@ -103,9 +101,7 @@ void logging(char const *name, char const *message, ...);
 
 void rlimit();
 
-void sig_handler(int signo);
-
-void reg_signo(int signo);
+void usr_sig_handler(int signo);
 
 void init_logging();
 

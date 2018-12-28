@@ -56,8 +56,10 @@ int main(int argc, char *argv[])
 {
     init_logging();
     rlimit();
-    reg_signo(SIGUSR1);
-    reg_signo(SIGUSR2);
+    if (signal(SIGUSR1, usr_sig_handler) == SIG_ERR \
+        || signal(SIGUSR2, usr_sig_handler) == SIG_ERR ) {
+        logging("warning", "Failed to register USR signal");
+    }
     char * server_addr;
     char * key;
     int server_port = SERVER_PORT;

@@ -44,13 +44,7 @@ void rlimit() {
   }
 }
 
-void reg_signo(int signo) {
-  if (signal(signo, sig_handler) == SIG_ERR) {
-    printf("Failed to register signo %d.\n", signo);
-  }
-}
-
-void sig_handler(int signo)
+void usr_sig_handler(int signo)
 {
   if (signo == SIGUSR2)
     set_debug();
