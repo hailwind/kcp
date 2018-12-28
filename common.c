@@ -358,7 +358,7 @@ void *dev2kcp(void *data)
     {
         if (!kcps->kcp || kcps->kcp->state==-1) {
             if (role==1) {//server
-                isleep(1);
+                isleep(2);
                 continue;
             }else{
                 logging("warning", "kcp not exists or kcp->state is -1, init kcp.");
@@ -404,7 +404,7 @@ void *dev2kcp(void *data)
         }
         if (cnt < 0) {
             if (read_times==0) {
-                if (sleep_times>5000) {
+                if (sleep_times>100000) {
                     uint16_t zero_frms = 0;
                     memcpy(alive_buff, &zero_frms, 2);
                     if (crypt && mcrypt.blocksize)
@@ -424,7 +424,7 @@ void *dev2kcp(void *data)
                     sleep_times=0;
                 }
                 sleep_times++;
-                isleep(1);
+                isleep(0.1);
                 continue;
             }else{
                 read_times++;
@@ -471,7 +471,7 @@ void *kcp2dev(void *data)
                 logging("kcp2dev", "recv no data for 2s.");
                 x = 0;
             }
-            isleep(1);
+            isleep(0.1);
             continue;
         }
         logging("kcp2dev", "kcp2dev-1 %ld",timstamp());
@@ -558,7 +558,7 @@ void * kcpupdate_server(void *data)
                 pthread_mutex_unlock(&kcps->ikcp_mutex);
             }
         }
-        isleep(1);
+        isleep(0.1);
     }
 }
 
@@ -573,7 +573,7 @@ void kcpupdate_client(struct kcpsess_st *kcps)
             pthread_mutex_unlock(&kcps->ikcp_mutex);
             uint32_t diff = next-current;
             if (diff>0) {
-                isleep(diff);
+                isleep(0.1);
             }
             pthread_mutex_lock(&kcps->ikcp_mutex);
             ikcp_update(kcps->kcp, iclock());

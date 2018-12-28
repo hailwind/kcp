@@ -178,11 +178,17 @@ static inline IUINT32 iclock()
 }
 
 /* sleep in millisecond */
-static inline void isleep(unsigned long millisecond)
+static inline void isleep(float mseconds)
 {
+	/*
 	struct timespec ts;
 	ts.tv_sec = (time_t)(millisecond / 1000);
 	ts.tv_nsec = (long)((millisecond % 1000) * 1000000);
+	*/
 	/*nanosleep(&ts, NULL);*/
-	usleep((millisecond << 10) - (millisecond << 4) - (millisecond << 3));
+	//long x = (millisecond << 10) - (millisecond << 4) - (millisecond << 3);
+	//x = x/8;
+	//printf("usleep: %ld \n", x);
+	long us = mseconds*1000;
+	usleep(us);
 }
