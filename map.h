@@ -96,8 +96,8 @@ static void map_free(map_t *node){
             node->key = NULL;
             free(node->val);
             node->val = NULL;
-    }
-        free(node);
+        }
+        //free(node);
         node = NULL;
     }
 }

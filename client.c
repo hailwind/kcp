@@ -1,6 +1,10 @@
 #include "common.h"
 #include <getopt.h>
 
+char * server_addr;
+int server_port = SERVER_PORT;
+int conv=0;
+
 void handle(int dev_fd, int sock_fd, int conv, struct sockaddr_in *dst, char *key)
 {
     struct kcpsess_st ps;
@@ -28,6 +32,14 @@ void handle(int dev_fd, int sock_fd, int conv, struct sockaddr_in *dst, char *ke
     pthread_detach(kcp2devt);
 
     kcpupdate_client(&ps);
+}
+
+void exit_sig_signal(int signo) {
+    if (signo==SIGINT || signo==SIGQUIT || signo == SIGTERM) {
+        delete_pid("client", server_addr, server_port);
+        logging("notice", "exit.");
+        exit(0);
+    }
 }
 
 int learn=0;
@@ -60,10 +72,14 @@ int main(int argc, char *argv[])
         || signal(SIGUSR2, usr_sig_handler) == SIG_ERR ) {
         logging("warning", "Failed to register USR signal");
     }
-    char * server_addr;
+    if (signal(SIGINT, exit_sig_signal) == SIG_ERR \
+        || signal(SIGQUIT, exit_sig_signal) == SIG_ERR \
+        || signal(SIGTERM, exit_sig_signal) == SIG_ERR ) {
+        logging("warning", "Failed to register exit signal");
+    }
+    
     char * key;
-    int server_port = SERVER_PORT;
-    int conv=0;
+
     int opt=0;
     while((opt=getopt_long(argc,argv,"s:p:c:h",long_option,NULL))!=-1)
     {
@@ -102,7 +118,7 @@ int main(int argc, char *argv[])
         logging("notice", "no key input or key too long, the length must be between 16 and 32");
         exit(1);
     }
-    create_pid("client", conv);
+    create_pid("client", server_addr, server_port);
     int dev_fd = init_tap(conv);
     int sock_fd = socket(AF_INET, SOCK_DGRAM, 0);
     if (sock_fd < 0)

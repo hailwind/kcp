@@ -1,17 +1,20 @@
 #include <getopt.h>
 #include "common.h"
 
-#define FIFO "/var/run/fifo"
+#define FIFO "/var/run/svpn_%s_%d.fifo"
+
+char * server_addr;
+int server_port = SERVER_PORT;
+int fifo_fd = -1;
 
 void print_help() {
     printf("\
 //start a server process.\n\
-server [--bind=0.0.0.0] [--port=8888] [--mode=3] [--with-lz4] [--no-crypt]  [--crypt-algo=twofish] [--crypt-mode=cbc] [--debug]\n\
-//add a conv to a server, identify the server by port. \n\
-server [--port=8888] --add-conv=38837 --crypt-key=0123456789012345678901234567890\n\
-//del a conv from a server, identify the server by port. \n\
-server [--port=8888] --del-conv=38837\n");
-    exit(0);
+server --bind=192.168.1.2 [--port=8888] [--mode=3] [--with-lz4] [--no-crypt]  [--crypt-algo=twofish] [--crypt-mode=cbc] [--debug]\n\
+//add a conv to a server, identify the server by ipaddr and port. \n\
+server --bind=192.168.1.2 [--port=8888] --add-conv=38837 --crypt-key=0123456789012345678901234567890\n\
+//del a conv from a server, identify the server by ipaddr and port. \n\
+server --bind=192.168.1.2 [--port=8888] --del-conv=38837\n");
 }
 
 static int listening(char *bind_addr, int port)
@@ -76,25 +79,28 @@ void set_conv_dead(struct connection_map_st *conn_map, char *conv) {
         if (kcps->dev_fd>0) close(kcps->dev_fd);
         if (kcps->kcp) ikcp_release(kcps->kcp);
         map_delete(&conn_map->conv_session_map, node);
-//        free(kcps);
+        free(kcps);
     }
 }
 
-int open_fifo(int port, char rw) {
+int open_fifo(char * ip_addr, int port, char rw) {
     int fifo_fd;
     char fifo_file[50];
     bzero(&fifo_file, 50);
-    sprintf(fifo_file, "%s.%d", FIFO, port);
+    sprintf(fifo_file, FIFO, ip_addr, port);
     /*
     0 exists
     2 write
     4 read
     */
-    if(mkfifo(fifo_file, 0666)) {
-        perror("Mkfifo error");  
+    if (access(fifo_file, 0)==-1) {
+        if(mkfifo(fifo_file, 666)) {
+            perror("Mkfifo error");
+        }
+        chmod(fifo_file, S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP|S_IROTH|S_IWOTH);
     }
     if (rw=='R') {
-        fifo_fd=open(fifo_file, O_RDONLY|O_NONBLOCK);
+        fifo_fd=open(fifo_file, O_RDONLY);
     }else if (rw=='W') {
         fifo_fd=open(fifo_file, O_WRONLY);
     }
@@ -102,6 +108,15 @@ int open_fifo(int port, char rw) {
     return fifo_fd;
 }
 
+void close_fifo(int fd, char * ip_addr, int port) {
+    if (fd>0) {
+        close(fd);
+    }
+    char fifo_file[50];
+    bzero(&fifo_file, 50);
+    sprintf(fifo_file, FIFO, ip_addr, port);
+    unlink(fifo_file);
+}
 
 void start_thread(struct kcpsess_st *kcps) {
     if (kcps->dev2kcpt==0) {
@@ -116,44 +131,42 @@ void start_thread(struct kcpsess_st *kcps) {
     }
 }
 
-void read_fifo(struct connection_map_st *conn_map) {
-    if (conn_map->fifo_fd>=0) {
-        char buf[128];
-        bzero(&buf, 128);
-        int count=read(conn_map->fifo_fd, buf, 127);
-        if (count>7) {
-            logging("read_fifo", "read fifo: %s, %d bytes", buf, count);
-            char *conv;
-            char *key;
-            int tmp=0;
-            conv = (void *)&buf+3;
-            int i=3;
-            for (i=3;i<count;i++) {
-                if (buf[i]=='&') {
-                    buf[i]='\0';
-                    key = (void *)&buf + i +1;
-                }
-                if (buf[i]=='\n') {
-                    buf[i]='\0';
-                    break;
-                }
+void read_fifo(int fifo_fd, struct connection_map_st *conn_map) {
+    char buf[128];
+    bzero(&buf, 128);
+    int count=read(fifo_fd, buf, 127);  //主线程将会BLOCK在这儿．
+    if (count>7) {
+        logging("read_fifo", "read fifo: %s, %d bytes", buf, count);
+        char *conv;
+        char *key;
+        int tmp=0;
+        conv = (void *)&buf+3;
+        int i=3;
+        for (i=3;i<count;i++) {
+            if (buf[i]=='&') {
+                buf[i]='\0';
+                key = (void *)&buf + i +1;
             }
-            if (strncmp("ADD", buf, 3)==0) {
-                map_t *node = map_get(&conn_map->conv_session_map, conv);
-                if (!node) {
-                    struct kcpsess_st *kcps = init_kcpsess(conn_map, atoi(conv), key);
-                    start_thread(kcps);
-                    map_put(&conn_map->conv_session_map, conv, kcps);
-                    logging("notice", "server init_kcpsess conv: %s key: %s kcps: %p", conv, key, kcps);
-                }else{
-                    logging("notice", "conv %s exists.", conv);
-                }
-            }else if(strncmp("DEL", buf, 3)==0) {
-                set_conv_dead(conn_map, conv);
+            if (buf[i]=='\n') {
+                buf[i]='\0';
+                break;
             }
-        }else{
-            logging("read_fifo", "read fifo: %d bytes", count);
         }
+        if (strncmp("ADD", buf, 3)==0) {
+            map_t *node = map_get(&conn_map->conv_session_map, conv);
+            if (!node) {
+                struct kcpsess_st *kcps = init_kcpsess(conn_map, atoi(conv), key);
+                start_thread(kcps);
+                map_put(&conn_map->conv_session_map, conv, kcps);
+                logging("notice", "server init_kcpsess conv: %s key: %s kcps: %p", conv, key, kcps);
+            }else{
+                logging("notice", "conv %s exists.", conv);
+            }
+        }else if(strncmp("DEL", buf, 3)==0) {
+            set_conv_dead(conn_map, conv);
+        }
+    }else{
+        logging("read_fifo", "read fifo: %d bytes", count);
     }
     logging("read_fifo", "exit read_fifo");
 }
@@ -173,7 +186,6 @@ void send_fifo(int fifo_fd, char *cmd, char *conv, char *key) {
         exit(1);
     }
     strcat(buf, "\n");
-  
     int cnt = write(fifo_fd, buf, strlen(buf));
     logging("notice", "sent %d bytes: %s", cnt, buf);
 }
@@ -181,8 +193,9 @@ void send_fifo(int fifo_fd, char *cmd, char *conv, char *key) {
 void wait_conv(struct connection_map_st *conn_m) {
     while (1)
     {
-        read_fifo(conn_m);
-        sleep(1);
+        fifo_fd = open_fifo(server_addr, server_port, 'R');
+        read_fifo(fifo_fd, conn_m);
+        close_fifo(fifo_fd, server_addr, server_port);
     }
 }
 
@@ -196,6 +209,8 @@ void handle(struct server_listen_st *server)
 
 void exit_sig_signal(int signo) {
     if (signo==SIGINT || signo==SIGQUIT || signo == SIGTERM) {
+        delete_pid("server", server_addr, server_port);
+        close_fifo(fifo_fd, server_addr, server_port);
         logging("notice", "exit.");
         exit(0);
     }
@@ -233,9 +248,7 @@ int main(int argc, char *argv[])
         || signal(SIGTERM, exit_sig_signal) == SIG_ERR ) {
         logging("warning", "Failed to register exit signal");
     }
-    char all_addr[20]="0.0.0.0";
-    char *bind_addr = all_addr;
-    int server_port = SERVER_PORT;
+    server_port = SERVER_PORT;
     char *key = NULL;
     char *conv = NULL;
     char *cmd = NULL;
@@ -246,7 +259,7 @@ int main(int argc, char *argv[])
         {
             case 0:break;
             case 'b': 
-                bind_addr=optarg; break;
+                server_addr=optarg; break;
             case 'p': 
                 server_port=atoi(optarg); break;
             case 'Z':
@@ -262,35 +275,32 @@ int main(int argc, char *argv[])
             case 'm': 
                 set_mode(atoi(optarg)); break;
             case 'X':
-                cmd = "DEL";
-                conv = optarg;
-                break;
+                cmd = "DEL"; conv = optarg; break;
             case 'Y':
-                cmd = "ADD";
-                conv = optarg;
-                break;
+                cmd = "ADD"; conv = optarg; break;
             case 'd': 
                 set_debug(); break;
             case 'h': 
-                print_help(); break;
+                print_help(); exit(0); break;
         }
     }
+    if( ! server_addr ) {
+        print_help();
+        exit(1);
+    }
     if(cmd && conv) {
-        send_fifo(open_fifo(server_port, 'W'), cmd, conv, key);
+        send_fifo(open_fifo(server_addr, server_port, 'W'), cmd, conv, key);
         exit(0);
     }
     set_server();
     srand(time(NULL));
-    create_pid("server", server_port);
+    create_pid("server", server_addr, server_port);
     struct connection_map_st conn_map;
     bzero(&conn_map, sizeof(struct connection_map_st));
     conn_map.conv_session_map = RB_ROOT;
-    #ifdef DEFAULT_ALLOWED_CONV
-    map_put(&conn_map.conv_session_map, DEFAULT_ALLOWED_CONV, NULL);
-    #endif
 
     char *mPtr = NULL;
-    mPtr = strtok(bind_addr, ",");
+    mPtr = strtok(server_addr, ",");
     while (mPtr != NULL)
     {
         int sock_fd = listening(mPtr, server_port);
@@ -307,7 +317,5 @@ int main(int argc, char *argv[])
     pthread_detach(updateloopt);
     logging("notice", "create kcpupdate_server thread: %ld", updateloopt);
 
-    int fifo_fd = open_fifo(server_port, 'R');
-    conn_map.fifo_fd = fifo_fd;
     wait_conv(&conn_map);
 }

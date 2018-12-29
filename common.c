@@ -62,25 +62,25 @@ void init_logging() {
     }
 }
 
-void create_pid(char * role, int id) {
+void create_pid(char * role, char * ipaddr, int id) {
     int pid = getpid();
     FILE *pid_fd;
     char f_name[256];
     bzero(f_name, 256);
-    char buff[10];
-    bzero(buff, 10);
-    strcat(f_name, "/var/run/");
-    strcat(f_name, role);
-    strcat(f_name, "_");
-    sprintf(buff, "%d", id);
-    strcat(f_name, buff);
-    strcat(f_name, ".pid");
+    sprintf(f_name, PID_PATH, role, ipaddr, id);
     if((pid_fd=fopen(f_name,"wt+"))==NULL){
         logging("notice", "create pid file: %s fd: %d failed.", f_name, pid_fd);
         exit(1);
     }
     fprintf(pid_fd, "%d", pid);
     fclose(pid_fd);
+}
+
+void delete_pid(char * role, char * ipaddr, int id) {
+    char f_name[256];
+    bzero(f_name, 256);
+    sprintf(f_name, PID_PATH, role, ipaddr, id);
+    unlink(f_name);
 }
 
 void set_debug(){

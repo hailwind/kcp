@@ -58,6 +58,8 @@
 
 #define __NR_gettid 186
 
+#define PID_PATH "/var/run/svpn_%s_%s_%d.pid"
+
 struct mcrypt_st
 {
     MCRYPT td;
@@ -105,7 +107,9 @@ void usr_sig_handler(int signo);
 
 void init_logging();
 
-void create_pid(char *role, int conv);
+void create_pid(char *role, char * ipaddr, int id);
+
+void delete_pid(char *role, char * ipaddr, int id);
 
 void set_debug();
 
