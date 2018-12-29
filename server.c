@@ -17,8 +17,7 @@ server --bind=192.168.1.2 [--port=8888] --add-conv=38837 --crypt-key=01234567890
 server --bind=192.168.1.2 [--port=8888] --del-conv=38837\n");
 }
 
-static int listening(char *bind_addr, int port)
-{
+static int listening(char *bind_addr, int port) {
     struct sockaddr_in server;
     bzero(&server, sizeof(server));
     int server_fd = socket(AF_INET, SOCK_DGRAM, 0);
@@ -43,8 +42,7 @@ static int listening(char *bind_addr, int port)
 }
 
 struct kcpsess_st * init_kcpsess(struct connection_map_st *conn_map, 
-                                uint32_t conv, char *key)
-{
+                                uint32_t conv, char *key) {
     int dev_fd = init_tap(conv);
     struct kcpsess_st *ps = (struct kcpsess_st *)malloc(sizeof(struct kcpsess_st));
     bzero(ps, sizeof(struct kcpsess_st));
@@ -53,8 +51,6 @@ struct kcpsess_st * init_kcpsess(struct connection_map_st *conn_map,
     ps->conv = conv;
     ps->kcp = NULL;
     ps->sess_id = 0;
-    ps->dev2kcpt = 0;
-    ps->kcp2devt = 0;
     ps->dead = 0;
     strncpy(ps->key, key, strlen(key));
     pthread_mutex_t ikcp_mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -119,6 +115,8 @@ void close_fifo(int fd, char * ip_addr, int port) {
 }
 
 void start_thread(struct kcpsess_st *kcps) {
+    sigaddset(&kcps->toudp_sigset, SIGRTMIN+1);
+    sigaddset(&kcps->todev_sigset, SIGRTMIN);
     if (kcps->dev2kcpt==0) {
         pthread_create(&kcps->dev2kcpt, NULL, dev2kcp, (void *)kcps);
         pthread_detach(kcps->dev2kcpt);
@@ -129,6 +127,12 @@ void start_thread(struct kcpsess_st *kcps) {
         pthread_detach(kcps->kcp2devt);
         logging("notice", "create kcp2dev thread: %ld", kcps->kcp2devt);
     }
+    if (kcps->updatet==0) {
+        pthread_create(&kcps->updatet, NULL, kcpupdate, (void *)kcps);
+        pthread_detach(kcps->updatet);
+        logging("notice", "create kcpupdate thread: %ld", kcps->updatet);
+    }
+
 }
 
 void read_fifo(int fifo_fd, struct connection_map_st *conn_map) {
@@ -199,14 +203,6 @@ void wait_conv(struct connection_map_st *conn_m) {
     }
 }
 
-void handle(struct server_listen_st *server)
-{
-    pthread_t udp2kcpt;
-    pthread_create(&udp2kcpt, NULL, udp2kcp_server, (void *)server);
-    pthread_detach(udp2kcpt);
-    logging("handle", "create udp2kcp_server thread: %ld", udp2kcpt);
-}
-
 void exit_sig_signal(int signo) {
     if (signo==SIGINT || signo==SIGQUIT || signo == SIGTERM) {
         delete_pid("server", server_addr, server_port);
@@ -235,8 +231,7 @@ static const struct option long_option[]={
 };
 
 // server [--algo=twofish] [--mode=cbc]
-int main(int argc, char *argv[])
-{
+int main(int argc, char *argv[]) {
     init_logging();
     rlimit();
     if (signal(SIGUSR1, usr_sig_handler) == SIG_ERR \
@@ -253,10 +248,8 @@ int main(int argc, char *argv[])
     char *conv = NULL;
     char *cmd = NULL;
     int opt=0;
-    while((opt=getopt_long(argc,argv,"p:c:h",long_option,NULL))!=-1)
-    {
-        switch(opt)
-        {
+    while((opt=getopt_long(argc,argv,"p:c:h",long_option,NULL))!=-1) {
+        switch(opt) {
             case 0:break;
             case 'b': 
                 server_addr=optarg; break;
@@ -301,21 +294,17 @@ int main(int argc, char *argv[])
 
     char *mPtr = NULL;
     mPtr = strtok(server_addr, ",");
-    while (mPtr != NULL)
-    {
+    while (mPtr != NULL) {
         int sock_fd = listening(mPtr, server_port);
         struct server_listen_st *server = malloc(sizeof(struct server_listen_st));
         bzero(server, sizeof(struct server_listen_st));
         server->sock_fd = sock_fd;
         server->conn_map = &conn_map;
-        handle(server);
+        pthread_t udp2kcpt;
+        pthread_create(&udp2kcpt, NULL, udp2kcp_server, (void *)server);
+        pthread_detach(udp2kcpt);
+        logging("notice", "create udp2kcp_server thread: %ld", udp2kcpt);
         mPtr = strtok(NULL, ",");
     }
-
-    pthread_t updateloopt;
-    pthread_create(&updateloopt, NULL, kcpupdate_server, (void *)&conn_map);
-    pthread_detach(updateloopt);
-    logging("notice", "create kcpupdate_server thread: %ld", updateloopt);
-
     wait_conv(&conn_map);
 }

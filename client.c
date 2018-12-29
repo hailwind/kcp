@@ -4,39 +4,47 @@
 char * server_addr;
 int server_port = SERVER_PORT;
 int conv=0;
+int sock_fd;
+int dev_fd;
 
 void handle(int dev_fd, int sock_fd, int conv, struct sockaddr_in *dst, char *key)
 {
-    struct kcpsess_st ps;
-    bzero(&ps, sizeof(struct kcpsess_st));
-    ps.sock_fd = sock_fd;
-    ps.dev_fd = dev_fd;
-    ps.conv = conv;
-    ps.dst = *dst;
-    ps.dst_len = sizeof(ps.dst);
-    ps.kcp=NULL;
-    ps.dead=0;
-    strncpy(ps.key, key, strlen(key));
+    struct kcpsess_st *ps = (struct kcpsess_st *)malloc(sizeof(struct kcpsess_st));
+    bzero(ps, sizeof(struct kcpsess_st));
+    ps->sock_fd = sock_fd;
+    ps->dev_fd = dev_fd;
+    ps->conv = conv;
+    ps->dst = *dst;
+    ps->dst_len = sizeof(ps->dst);
+    ps->kcp = NULL;
+    ps->sess_id = 0;
+    ps->dead = 0;
+    strncpy(ps->key, key, strlen(key));
     pthread_mutex_t ikcp_mutex = PTHREAD_MUTEX_INITIALIZER;
-    ps.ikcp_mutex = ikcp_mutex;
+    ps->ikcp_mutex = ikcp_mutex;
 
-    pthread_t udp2kcpt, dev2kcpt, kcp2devt;
+    sigaddset(&ps->toudp_sigset, SIGRTMIN+1);
+    sigaddset(&ps->todev_sigset, SIGRTMIN);
 
-    pthread_create(&udp2kcpt, NULL, udp2kcp_client, (void *)&ps);
+    pthread_t udp2kcpt;
+    pthread_create(&udp2kcpt, NULL, udp2kcp_client, (void *)ps);
     pthread_detach(udp2kcpt);
 
-    pthread_create(&dev2kcpt, NULL, dev2kcp, (void *)&ps);
-    pthread_detach(dev2kcpt);
+    pthread_create(&ps->dev2kcpt, NULL, dev2kcp, (void *)ps);
+    pthread_detach(ps->dev2kcpt);
 
-    pthread_create(&kcp2devt, NULL, kcp2dev, (void *)&ps);
-    pthread_detach(kcp2devt);
+    pthread_create(&ps->kcp2devt, NULL, kcp2dev, (void *)ps);
+    pthread_detach(ps->kcp2devt);
 
-    kcpupdate_client(&ps);
+    pthread_create(&ps->updatet, NULL, kcpupdate, (void *)ps);
+    pthread_detach(ps->updatet);
 }
 
 void exit_sig_signal(int signo) {
     if (signo==SIGINT || signo==SIGQUIT || signo == SIGTERM) {
         delete_pid("client", server_addr, server_port);
+        close(sock_fd);
+        close(dev_fd);
         logging("notice", "exit.");
         exit(0);
     }
@@ -77,9 +85,7 @@ int main(int argc, char *argv[])
         || signal(SIGTERM, exit_sig_signal) == SIG_ERR ) {
         logging("warning", "Failed to register exit signal");
     }
-    
     char * key;
-
     int opt=0;
     while((opt=getopt_long(argc,argv,"s:p:c:h",long_option,NULL))!=-1)
     {
@@ -110,8 +116,7 @@ int main(int argc, char *argv[])
                 print_help(); break;
         }
     }
-    if (!server_addr || conv==0 || !key || strlen(key)<16)
-    {
+    if (!server_addr || conv==0 || !key || strlen(key)<16) {
         print_help();
     }
     if(!key && strlen(key)<16 && strlen(key)>32) {
@@ -119,8 +124,8 @@ int main(int argc, char *argv[])
         exit(1);
     }
     create_pid("client", server_addr, server_port);
-    int dev_fd = init_tap(conv);
-    int sock_fd = socket(AF_INET, SOCK_DGRAM, 0);
+    dev_fd = init_tap(conv);
+    sock_fd = socket(AF_INET, SOCK_DGRAM, 0);
     if (sock_fd < 0)
     {
         logging("client", "create socket fail!");
@@ -133,9 +138,9 @@ int main(int argc, char *argv[])
     ser_addr.sin_port = htons(server_port);
     logging("client", "open server_addr: %s, server_port: %d, key: %s, keyp: %p", server_addr, server_port, key, &key);
     handle(dev_fd, sock_fd, conv, &ser_addr, key);
+    while(1) {
+        sleep(10);
+    }
     logging("client", "close.");
-    close(sock_fd);
-    close(dev_fd);
-
     return 0;
 }

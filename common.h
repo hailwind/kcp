@@ -32,7 +32,7 @@
 #define SERVER_IP "192.168.10.11"
 #define SERVER_PORT 8888
 
-#define ENABLED_LOG {"notice", "warning", "handle", "init_tap", "init_mcrypt"}
+#define ENABLED_LOG {"notice", "warning", "init_tap", "init_mcrypt"}
 
 //IKCP PARAMETERS DEFINE
 //int nodelay, int interval, int resend, int nc
@@ -51,7 +51,6 @@
 #define RX_MINRTO 20
 
 #define MTU 1400
-
 #define RCV_BUFF_LEN 16384
 
 #define KEY "0123456789012345678901234567890"
@@ -59,6 +58,8 @@
 #define __NR_gettid 186
 
 #define PID_PATH "/var/run/svpn_%s_%s_%d.pid"
+
+static uint32_t pid;
 
 struct mcrypt_st
 {
@@ -75,14 +76,18 @@ struct kcpsess_st
     int dev_fd;
 	int sock_fd;
 	ikcpcb *kcp;
-	char key[33];
+	char key[64];
     struct sockaddr_in dst;
 	socklen_t dst_len;
 	uint64_t last_alive_time;
 	pthread_t kcp2devt;
 	pthread_t dev2kcpt;
+	pthread_t updatet;
 	int dead;
+	uint32_t latest_send_iclock;
 	pthread_mutex_t ikcp_mutex;
+	sigset_t toudp_sigset;
+	sigset_t todev_sigset;
 };
 
 typedef struct kcpsess_st * kcpsess_pt;
@@ -141,9 +146,11 @@ void * dev2kcp(void *data);
 
 void * kcp2dev(void *data);
 
-void * kcpupdate_server(void *data);
+void * kcpupdate(void *data);
 
-void kcpupdate_client(struct kcpsess_st *kcps);
+// void * kcpupdate_server(void *data);
+
+// void kcpupdate_client(struct kcpsess_st *kcps);
 
 /* get system time */
 static inline void itimeofday(long *sec, long *usec)
